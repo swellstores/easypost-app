@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json.swell.store/model.json",
+  "collection": "orders",
+  "description": "EasyPost label and tracking data stored on orders",
+  "fields": {
+    "easypost_status": {
+      "type": "string",
+      "enum": [
+        "label_purchased",
+        "voided",
+        "error"
+      ],
+      "description": "label_purchased once a label is bought; voided after the label is refunded"
+    },
+    "easypost_shipment_id": {
+      "type": "string",
+      "description": "EasyPost shipment ID (shp_\u2026) of the label"
+    },
+    "easypost_tracker_id": {
+      "type": "string",
+      "description": "EasyPost tracker ID (trk_\u2026)"
+    },
+    "easypost_tracking_code": {
+      "type": "string"
+    },
+    "easypost_tracking_url": {
+      "type": "string",
+      "description": "EasyPost public tracking page"
+    },
+    "easypost_label_url": {
+      "type": "string"
+    },
+    "easypost_carrier": {
+      "type": "string",
+      "description": "Carrier of the label, e.g. USPS"
+    },
+    "easypost_service": {
+      "type": "string",
+      "description": "Carrier service of the label, e.g. Priority"
+    },
+    "easypost_label_cost": {
+      "type": "float",
+      "description": "Postage paid for the label"
+    },
+    "easypost_label_currency": {
+      "type": "string"
+    },
+    "easypost_refund_status": {
+      "type": "string",
+      "description": "submitted, refunded or rejected after the label is voided"
+    },
+    "easypost_swell_shipment_id": {
+      "type": "objectid",
+      "description": "Swell shipment created from the label"
+    },
+    "easypost_tracking_status": {
+      "type": "string",
+      "description": "EasyPost tracker status, e.g. in_transit or delivered"
+    },
+    "easypost_tracking_details": {
+      "type": "string"
+    },
+    "easypost_tracking_date": {
+      "type": "date",
+      "description": "Time of the latest applied tracker update, used to skip out-of-order updates"
+    },
+    "easypost_eta": {
+      "type": "date"
+    },
+    "easypost_checked_at": {
+      "type": "date",
+      "description": "Last time the tracker was refreshed"
+    },
+    "easypost_error": {
+      "type": "string"
+    }
+  }
+}

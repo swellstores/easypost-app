@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json.swell.store/content.json",
+  "collection": "orders",
+  "description": "EasyPost label and tracking details on orders",
+  "fields": [
+    {
+      "id": "easypost_status",
+      "label": "Status",
+      "type": "select",
+      "readonly": true,
+      "options": [
+        {
+          "value": "label_purchased",
+          "label": "Label purchased"
+        },
+        {
+          "value": "voided",
+          "label": "Label voided"
+        },
+        {
+          "value": "error",
+          "label": "Error"
+        }
+      ]
+    },
+    {
+      "id": "easypost_carrier",
+      "label": "Carrier",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_service",
+      "label": "Service",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_tracking_code",
+      "label": "Tracking number",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_tracking_status",
+      "label": "Tracking status",
+      "type": "select",
+      "readonly": true,
+      "options": [
+        {
+          "value": "unknown",
+          "label": "Unknown"
+        },
+        {
+          "value": "pre_transit",
+          "label": "Pre-transit"
+        },
+        {
+          "value": "in_transit",
+          "label": "In transit"
+        },
+        {
+          "value": "out_for_delivery",
+          "label": "Out for delivery"
+        },
+        {
+          "value": "delivered",
+          "label": "Delivered"
+        },
+        {
+          "value": "available_for_pickup",
+          "label": "Available for pickup"
+        },
+        {
+          "value": "return_to_sender",
+          "label": "Returned to sender"
+        },
+        {
+          "value": "failure",
+          "label": "Failure"
+        },
+        {
+          "value": "cancelled",
+          "label": "Cancelled"
+        },
+        {
+          "value": "error",
+          "label": "Error"
+        }
+      ]
+    },
+    {
+      "id": "easypost_tracking_details",
+      "label": "Tracking details",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_eta",
+      "label": "Estimated delivery",
+      "type": "date",
+      "readonly": true
+    },
+    {
+      "id": "easypost_tracking_url",
+      "label": "Tracking page",
+      "type": "url",
+      "readonly": true
+    },
+    {
+      "id": "easypost_label_url",
+      "label": "Label",
+      "type": "url",
+      "readonly": true
+    },
+    {
+      "id": "easypost_label_cost",
+      "label": "Postage",
+      "type": "number",
+      "readonly": true
+    },
+    {
+      "id": "easypost_label_currency",
+      "label": "Currency",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_shipment_id",
+      "label": "EasyPost shipment ID",
+      "type": "short_text",
+      "readonly": true
+    },
+    {
+      "id": "easypost_refund_status",
+      "label": "Refund",
+      "type": "select",
+      "readonly": true,
+      "options": [
+        {
+          "value": "submitted",
+          "label": "Submitted"
+        },
+        {
+          "value": "refunded",
+          "label": "Refunded"
+        },
+        {
+          "value": "rejected",
+          "label": "Rejected"
+        }
+      ]
+    },
+    {
+      "id": "easypost_error",
+      "label": "Error",
+      "type": "long_text",
+      "readonly": true
+    }
+  ],
+  "views": [
+    {
+      "id": "list",
+      "fields": [
+        {
+          "id": "easypost_status",
+          "label": "EasyPost"
+        }
+      ]
+    },
+    {
+      "id": "edit",
+      "actions": [
+        {
+          "id": "buy_label",
+          "label": "Buy EasyPost label",
+          "function": "buy-label",
+          "loading_label": "Buying…",
+          "hint": "Buys a label from your EasyPost account for the service the customer chose",
+          "conditions": {
+            "easypost_status": {
+              "$ne": "label_purchased"
+            }
+          }
+        },
+        {
+          "id": "void_label",
+          "label": "Void EasyPost label",
+          "function": "void-label",
+          "loading_label": "Voiding…",
+          "hint": "Asks the carrier to refund the label and cancels its Swell shipment",
+          "conditions": {
+            "easypost_status": "label_purchased"
+          }
+        }
+      ],
+      "tabs": [
+        {
+          "id": "easypost",
+          "label": "EasyPost",
+          "fields": [
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_status",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_shipment_id",
+                  "admin_span": 2
+                }
+              ]
+            },
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_carrier",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_service",
+                  "admin_span": 2
+                }
+              ]
+            },
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_tracking_code",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_tracking_status",
+                  "admin_span": 2
+                }
+              ]
+            },
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_tracking_details",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_eta",
+                  "admin_span": 2
+                }
+              ]
+            },
+            {
+              "id": "easypost_tracking_url"
+            },
+            {
+              "id": "easypost_label_url"
+            },
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_label_cost",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_label_currency",
+                  "admin_span": 2
+                }
+              ]
+            },
+            {
+              "id": "easypost_refund_status",
+              "conditions": {
+                "easypost_refund_status": {
+                  "$exists": true
+                }
+              }
+            },
+            {
+              "id": "easypost_error",
+              "conditions": {
+                "easypost_error": {
+                  "$exists": true
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "id": "easypost",
+  "name": "EasyPost",
+  "description": "Live EasyPost rates at checkout, labels and tracking for Swell orders",
+  "type": "integration",
+  "version": "1.0.0",
+  "support_email": "support@swell.is",
+  "permissions": [],
+  "integrations": [
+    "easypost"
+  ],
+  "extensions": [
+    {
+      "id": "easypost",
+      "type": "shipping",
+      "name": "EasyPost",
+      "description": "Live rates from your EasyPost carrier accounts"
+    }
+  ],
+  "images": [
+    {
+      "id": "setup",
+      "title": "Connected in a few minutes",
+      "description": "Paste your EasyPost API key and add the address your parcels ship from.",
+      "image_src": "assets/screenshots/1-settings.png"
+    },
+    {
+      "id": "checkout-rates",
+      "title": "Live carrier rates at checkout",
+      "description": "Turn on EasyPost in Settings → Shipping, and customers choose from USPS, UPS, FedEx, DHL and more.",
+      "image_src": "assets/screenshots/2-shipping.png"
+    },
+    {
+      "id": "labels",
+      "title": "Labels bought for you",
+      "description": "When an order is paid, the app buys the label for the service the customer chose, or you buy it from the order page.",
+      "image_src": "assets/screenshots/3-orders.png"
+    },
+    {
+      "id": "tracking",
+      "title": "Tracking on every order",
+      "description": "Each order gets a Swell shipment with the tracking number, a link to the label and live tracking from EasyPost.",
+      "image_src": "assets/screenshots/4-order.png"
+    }
+  ]
+}
