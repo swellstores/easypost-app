@@ -47,8 +47,8 @@ All credentials and options are app settings (`settings/easypost.json`). Nothing
 | Create Swell shipment when a label is bought | no | on | Fulfills the Swell order. When off, the label and tracking are still saved on the EasyPost tab. |
 | Customs signer | no | ship-from name | Name that signs customs forms for international labels. |
 | **Webhook** | | | |
-| Webhook secret | for the webhook | | Any long random string. Webhook requests without it are rejected. Stored as a secret. |
-| Webhook URL | read-only | `https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook?token={webhook-secret}` | The URL pattern to add in EasyPost, with the placeholders replaced. |
+| Webhook secret | no (recommended) | | Any long random string. When set, enter the same value as the webhook secret in EasyPost: events must carry a valid signature, and unsigned ones are rejected. When empty, events are accepted unsigned. Stored as a secret. |
+| Webhook URL | read-only | `https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook` | The URL pattern to add in EasyPost, with the placeholders replaced. |
 
 **Actions:** **Test connection** and **Refresh tracking now** are in the Actions menu on the app's settings page. **Buy EasyPost label** and **Void EasyPost label** are on each order's page; Void shows only while the order has a label.
 
@@ -76,23 +76,23 @@ Other events are acknowledged and ignored. Labels and voids don't need the webho
 
 **Steps**
 
-1. **Pick a secret.** In the app settings, set **Webhook secret** to a long random string (for example the output of `openssl rand -hex 24`) and save. Until a secret is set, every webhook request is rejected.
+1. **Pick a secret (recommended).** In the app settings, set **Webhook secret** to a long random string (for example the output of `openssl rand -hex 32`) and save. With a secret, only events EasyPost signed with it are accepted. Without one, the webhook accepts unsigned events; skip the secret in steps 3 and 4 then.
 2. **Build the URL.** Take the pattern from the read-only **Webhook URL** setting:
 
    ```
-   https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook?token={webhook-secret}
+   https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook
    ```
 
    - `{store-id}`: your Swell store ID, the subdomain of your `*.swell.store` address.
    - `{public-key}`: a Swell **public** key from **Developer → API keys**. Use the test key to reach the test environment and the live key for live. Never use a secret key here.
-   - `{webhook-secret}`: the secret from step 1.
-3. **Add it in EasyPost.** In EasyPost, open **Account Settings → Webhooks** and add the URL. EasyPost webhooks belong to a mode: add a test webhook (Swell test key URL) for your test API key and a production webhook (Swell live key URL) for your production key. You can also create it with EasyPost's API: `POST https://api.easypost.com/v2/webhooks` with `{"webhook": {"url": "…"}}`, authenticated with the API key of the mode you want.
-4. **Test it.** Send a request yourself:
+3. **Add it in EasyPost.** In EasyPost, open **Account Settings → Webhooks**, add the URL and, if you set one in step 1, enter the **same secret** as its webhook secret. EasyPost webhooks belong to a mode: add a test webhook (Swell test key URL) for your test API key and a production webhook (Swell live key URL) for your production key. You can also create it with EasyPost's API: `POST https://api.easypost.com/v2/webhooks` with `{"webhook": {"url": "…", "webhook_secret": "…"}}`, authenticated with the API key of the mode you want. EasyPost doesn't show the secret again, so keep a copy.
+4. **Test it.** Buy a test label from a Swell order (**Buy EasyPost label**). EasyPost sends `tracker.created` for the new tracker, and the order's EasyPost tab gets its tracking status. To send a request yourself, sign the exact body with the secret (without a secret, leave out the `X-Hmac-Signature` header):
 
    ```bash
-   curl -X POST 'https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook?token={webhook-secret}' \
-     -H 'Content-Type: application/json' \
-     -d '{"object":"Event","description":"tracker.updated","result":{"object":"Tracker","id":"trk_test"}}'
+   BODY='{"object":"Event","description":"tracker.updated","result":{"object":"Tracker","id":"trk_test"}}'
+   SIG="hmac-sha256-hex=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac '{webhook-secret}' | awk '{print $NF}')"
+   curl -X POST 'https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook' \
+     -H 'Content-Type: application/json' -H "X-Hmac-Signature: $SIG" -d "$BODY"
    ```
 
    A working webhook answers `200` with `{"received":true,"event":"tracker.updated"}`. Then check the app's function logs (`swell logs --type function -s EasyPost`) for the `easypost-webhook` call. With the made-up tracker ID the background step logs a 404 from EasyPost, which is expected.
@@ -101,11 +101,11 @@ Other events are acknowledged and ignored. Labels and voids don't need the webho
 
 | Response | Cause |
 |---|---|
-| `401` | The `token` in the URL doesn't match **Webhook secret**, or no secret is set. Log entry: `EasyPost: webhook rejected`. |
+| `401` | **Webhook secret** is set, and the event has no `X-Hmac-Signature` or was signed with a different secret (for example, the secret isn't entered in the EasyPost webhook). Log entry: `EasyPost: webhook rejected`, with `has_signature` and `has_secret`. |
 | `404` `Function app.easypost.easypost-webhook not found` | The public key is missing from the URL, belongs to another store, or the app isn't installed in that environment. |
 | `200` but nothing changes | **Enabled** is off, the webhook and the API key are in different modes (test vs production), or no order has that tracker. |
 
-The webhook URL contains your public key and the secret, so treat it like a password. To rotate it, change **Webhook secret**, save, and update the URL in EasyPost.
+To rotate the secret, change **Webhook secret** in the app settings and in the EasyPost webhook at the same time. Events signed with the old secret are rejected in between, and the hourly refresh catches up.
 
 ## How it works
 
@@ -136,7 +136,7 @@ Data stored on each order under `$app.easypost` (`models/orders.json`): `easypos
 
 **Tracking:** each pass refreshes up to 20 labels with `GET /trackers/{id}`, least recently checked first, stopping after about 6 seconds. Labels delivered, returned, failed or canceled, and orders older than 60 days, are no longer refreshed. Updates older than the last saved one are skipped, and a tracker whose shipment isn't the order's label is ignored.
 
-**Webhook security:** the URL carries the webhook secret (`?token=`), which is compared in constant time. The handler never trusts the payload: it loads the tracker again with `GET /trackers/{id}` using your API key. It answers right away and does the work after responding.
+**Webhook security:** with a **Webhook secret** set, EasyPost signs each event with it: `X-Hmac-Signature: hmac-sha256-hex=<HMAC-SHA256 of the raw body>`, with the secret normalized to Unicode NFKD, as EasyPost's client libraries do. The handler computes the signature over `req.rawBody` (the exact text EasyPost sent) and compares it in constant time; anything unsigned or mis-signed gets a `401`. Without a secret, the signature isn't checked. Either way the handler never trusts the payload: it loads the tracker again with `GET /trackers/{id}` using your API key, so a forged event can at most trigger a refresh of a real tracker. It answers right away and does the work after responding.
 
 ## Limits
 
@@ -174,6 +174,6 @@ swell logs --type function -s EasyPost
 - **Actions:** `test-connection`, `refresh-tracking-now`, `buy-label` and `void-label` are action functions (`action: true`). They can only be run from the dashboard, not with `swell api`.
 - **Schema validation:** in Swell CLI 2.9.19, `swell schema <type> <file>` fails on every file with `no schema with key or ref "https://json-schema.org/draft/2020-12/schema"`. The manifests were checked against the CLI's bundled schemas (`swell schema <type> --format=json-schema-bundle`) with Ajv's 2020-12 validator, and the platform validates everything again on `swell app push`. Content fields don't accept `float`; use `number`.
 - **Webhook URL:** the webhook only responds after `swell app push`; under `swell app dev` it isn't reachable publicly.
-- **Webhook token:** the token is read from `req.query.token`, or `req.data.token` when the query arrives merged into the data (as with `swell api post '/functions/easypost/easypost-webhook?token=…'`).
+- **Webhook signature:** the signature is checked against `req.rawBody`. Swell keeps the exact text only for calls through the storefront gateway (the `{store-id}.swell.store` webhook URL). `swell api post '/functions/easypost/easypost-webhook'` re-serializes the body, so signed test calls must go to the webhook URL itself.
 
 Listing assets: `assets/icon.png` is a 512×512 placeholder icon, to be replaced with the EasyPost logo. `images` in `swell.json` points at four listing screenshots in `assets/screenshots/` (`1-settings.png`, `2-shipping.png`, `3-orders.png`, `4-order.png`). The images haven't been made yet.

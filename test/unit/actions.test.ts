@@ -54,7 +54,7 @@ describe("test-connection", () => {
     expect(calls).toHaveLength(1);
     expect(message).toContain("Connected to EasyPost (test key).");
     expect(message).toContain("Fill in the ship-from address");
-    expect(message).toContain("Set a webhook secret");
+    expect(message).toContain("Set a webhook secret to accept only signed EasyPost events.");
   });
 
   it("flags no carrier accounts or a failed listing", async () => {

@@ -39,7 +39,7 @@ export default async function (req: SwellRequest) {
     notes.push('Fill in the ship-from address (street, city, postal code and country) to get rates and labels.');
   }
   if (!settings.webhook_secret?.trim()) {
-    notes.push('Set a webhook secret to get tracking updates as they happen.');
+    notes.push('Set a webhook secret to accept only signed EasyPost events.');
   }
 
   return { message: [`Connected to EasyPost (${test ? 'test' : 'production'} key).`, ...notes].join(' ') };

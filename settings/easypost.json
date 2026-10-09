@@ -360,15 +360,15 @@
           "id": "webhook_secret",
           "label": "Webhook secret",
           "type": "secret",
-          "description": "Any long random string. It goes at the end of the webhook URL."
+          "description": "Optional, recommended. When set, EasyPost must sign each event with the same secret (enter it as the webhook secret in EasyPost), and unsigned events are rejected. When empty, events are accepted unsigned."
         },
         {
           "id": "webhook_url",
           "label": "Webhook URL",
           "type": "short_text",
           "readonly": true,
-          "default": "https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook?token={webhook-secret}",
-          "description": "Replace {store-id} with your store ID, {public-key} with your Swell public key (Developer → API keys; test key for test, live key for live) and {webhook-secret} with the secret above. Add it in EasyPost → Account Settings → Webhooks, in the same mode (test or production) as your API key."
+          "default": "https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook",
+          "description": "Replace {store-id} with your store ID and {public-key} with your Swell public key (Developer → API keys; test key for test, live key for live). Add it in EasyPost → Account Settings → Webhooks, in the same mode (test or production) as your API key, with the webhook secret above."
         }
       ]
     }

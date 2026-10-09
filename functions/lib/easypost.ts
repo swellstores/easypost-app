@@ -559,7 +559,33 @@ export function carrierId(carrier?: string): string | undefined {
   return carrier ? slug(carrier) : undefined;
 }
 
-// constant-time comparison for the webhook token
+// EasyPost signs each webhook event: X-Hmac-Signature = "hmac-sha256-hex=" + HMAC-SHA256(raw body),
+// keyed with the webhook secret normalized to NFKD (as EasyPost's client libraries do)
+export const SIGNATURE_PREFIX = 'hmac-sha256-hex=';
+
+export async function computeSignature(secret: string, body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret.normalize('NFKD')),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+  const hex = [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${SIGNATURE_PREFIX}${hex}`;
+}
+
+export async function verifySignature(secret: string, body: string, header?: string | null): Promise<boolean> {
+  if (!secret || !header) {
+    return false;
+  }
+  const expected = await computeSignature(secret, body);
+  return safeEqual(header.trim().toLowerCase(), expected);
+}
+
+// constant-time string comparison
 export function safeEqual(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) {
     return false;

@@ -1,4 +1,4 @@
-import { EasyPostSettings, getEasyPostSettings, getTracker, hasKey, safeEqual } from './lib/easypost';
+import { EasyPostSettings, getEasyPostSettings, getTracker, hasKey, verifySignature } from './lib/easypost';
 import { applyTracker } from './lib/labels';
 
 export const config: SwellConfig = {
@@ -9,26 +9,33 @@ export const config: SwellConfig = {
   },
 };
 
-// The URL carries a secret token, and every tracker is loaded again from
-// the EasyPost API with your key before it is used.
+// With a webhook secret in the settings, EasyPost signs every event with it (X-Hmac-Signature
+// over the raw body) and unsigned or mis-signed requests are rejected. Without a secret, events
+// are accepted unsigned. Either way, every tracker is loaded again from the EasyPost API with
+// your key before it is used, so the payload itself is never trusted.
 export async function post(req: SwellRequest) {
   const { swell } = req;
   const settings = await getEasyPostSettings(swell);
 
   const secret = settings.webhook_secret?.trim() || '';
-  // query params can also arrive merged into req.data (e.g. through `swell api`)
-  const token = String(req.query?.token || req.data?.token || '');
+  // the exact text EasyPost sent; re-stringifying req.body would not match the signature
+  const rawBody = typeof req.rawBody === 'string' ? req.rawBody : typeof req.body === 'string' ? req.body : '';
+  const signature = req.headers?.get('x-hmac-signature');
 
-  if (!secret || !safeEqual(token, secret)) {
-    console.warn('EasyPost: webhook rejected', { has_token: Boolean(token), has_secret: Boolean(secret) });
-    throw new SwellError('Invalid webhook token', { status: 401 });
+  if (secret && !(await verifySignature(secret, rawBody, signature))) {
+    console.warn('EasyPost: webhook rejected', {
+      has_signature: Boolean(signature),
+      has_secret: Boolean(secret),
+      body_length: rawBody.length,
+    });
+    throw new SwellError('Invalid webhook signature', { status: 401 });
   }
 
   if (settings.enabled === false || !hasKey(settings)) {
     return { received: true, processed: false };
   }
 
-  const event = (typeof req.body === 'string' ? safeParse(req.body) : req.body) as {
+  const event = (typeof req.body === 'object' && req.body ? req.body : safeParse(rawBody)) as {
     description?: string;
     result?: any;
   };

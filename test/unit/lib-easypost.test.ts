@@ -10,6 +10,7 @@ import {
   carrierId,
   cheapestRate,
   chooseLabelRate,
+  computeSignature,
   createShipment,
   deliveryDescription,
   easypostRequest,
@@ -42,6 +43,7 @@ import {
   toOunces,
   totalWeight,
   verifyKey,
+  verifySignature,
 } from "../../functions/lib/easypost";
 import { SETTINGS, SHIPPING, jsonResponse, makeOrder, makeRate, mockEasyPost } from "../helpers/fixtures";
 
@@ -468,6 +470,24 @@ describe("misc", () => {
     expect(carrierId("USPS")).toBe("usps");
     expect(carrierId("DHL Express")).toBe("dhl_express");
     expect(carrierId(undefined)).toBeUndefined();
+  });
+
+  it("computeSignature matches EasyPost's HMAC (reference values from Python hmac)", async () => {
+    expect(await computeSignature("s3cret-token", '{"description":"tracker.updated"}')).toBe(
+      "hmac-sha256-hex=c7a4baa2e3d88a1e392f87b3317d8a58cec43fca82aebe96fda5517bd71ac6db",
+    );
+    // the secret is NFKD-normalized: the "ﬁ" ligature signs like "fi"
+    expect(await computeSignature("\ufb01le-secret", "body")).toBe(await computeSignature("file-secret", "body"));
+  });
+
+  it("verifySignature accepts only a matching signature", async () => {
+    const header = await computeSignature("s3cret", "body");
+    expect(await verifySignature("s3cret", "body", header)).toBe(true);
+    expect(await verifySignature("s3cret", "body", ` ${header.toUpperCase()} `)).toBe(true);
+    expect(await verifySignature("s3cret", "body2", header)).toBe(false);
+    expect(await verifySignature("other", "body", header)).toBe(false);
+    expect(await verifySignature("s3cret", "body", null)).toBe(false);
+    expect(await verifySignature("", "body", header)).toBe(false);
   });
 
   it("safeEqual", () => {
