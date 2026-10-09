@@ -9,6 +9,10 @@ export const config: SwellConfig = {
 export default async function (req: SwellRequest) {
   const settings = await getEasyPostSettings(req.swell);
 
+  if (settings.enabled === false) {
+    return { message: 'The EasyPost app is turned off. Turn on Enabled in the app settings first.' };
+  }
+
   if (!hasKey(settings)) {
     return { message: 'Add your EasyPost API key in the app settings first.' };
   }

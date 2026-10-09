@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import handler, { config } from "../../functions/order-events";
+import handler, { config } from "../../functions/easypost-order-events";
 import { createMockRequest } from "../helpers/mock-request";
 import { SETTINGS, makeBoughtShipment, makeOrder, makeRate, mockEasyPost, routeGet } from "../helpers/fixtures";
 
@@ -32,7 +32,7 @@ function mockBuy() {
   });
 }
 
-describe("order-events", () => {
+describe("easypost-order-events", () => {
   it("listens to submitted and paid orders", () => {
     expect(config.model?.events).toEqual(["order.submitted", "order.paid"]);
   });

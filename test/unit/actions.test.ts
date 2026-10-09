@@ -27,6 +27,27 @@ function quiet() {
   vi.spyOn(console, "error").mockImplementation(() => {});
 }
 
+describe("while the app is turned off", () => {
+  it("buy, void and refresh do nothing and say so", async () => {
+    const { fetchMock } = mockEasyPost({});
+    const get = vi.fn();
+    const off = { ...SETTINGS, enabled: false };
+    const message = "The EasyPost app is turned off. Turn on Enabled in the app settings first.";
+    const action = { $action: { id: "x", source: "record", collection: "orders", record_id: ORDER_ID } };
+
+    expect(await buyLabel(request(off, { get }, action))).toEqual({ message });
+    expect(await voidLabel(request(off, { get }, action))).toEqual({ message });
+    expect(await refreshNow(request(off, { get }))).toEqual({ message });
+    expect(get).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still lets you test the connection", async () => {
+    mockEasyPost({ "GET /shipments": { shipments: [] } });
+    expect((await testConnection(request({ ...SETTINGS, enabled: false }))).message).toContain("Connected to EasyPost");
+  });
+});
+
 describe("action configs", () => {
   it("are dashboard actions", () => {
     for (const config of [buyLabelConfig, voidLabelConfig, testConnectionConfig, refreshNowConfig]) {

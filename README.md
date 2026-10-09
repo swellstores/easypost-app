@@ -50,7 +50,7 @@ All credentials and options are app settings (`settings/easypost.json`). Nothing
 | Webhook secret | no (recommended) | | Any long random string. When set, enter the same value as the webhook secret in EasyPost: events must carry a valid signature, and unsigned ones are rejected. When empty, events are accepted unsigned. Stored as a secret. |
 | Webhook URL | read-only | `https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook` | The URL pattern to add in EasyPost, with the placeholders replaced. |
 
-**Actions:** **Test connection** and **Refresh tracking now** are in the Actions menu on the app's settings page. **Buy EasyPost label** and **Void EasyPost label** are on each order's page; Void shows only while the order has a label.
+**Actions:** **Test connection** and **Refresh tracking now** are in the Actions menu on the app's settings page. **Buy EasyPost label** and **Void EasyPost label** are on each order's page; Void shows only while the order has a label. While **Enabled** is off, Buy, Void and Refresh tracking now do nothing and say so; Test connection still works.
 
 ## Setup
 
@@ -112,7 +112,7 @@ To rotate the secret, change **Webhook secret** in the app settings and in the E
 | Function | Trigger | What it does |
 |---|---|---|
 | `functions/shipping-rates.ts` | `after:order.shipping`, extension `easypost` | Gets EasyPost rates and adds them to `shipment_rating.services`. |
-| `functions/order-events.ts` | `order.submitted`, `order.paid` | Buys the label on the event chosen in **Buy labels**. |
+| `functions/easypost-order-events.ts` | `order.submitted`, `order.paid` | Buys the label on the event chosen in **Buy labels**. |
 | `functions/refresh-tracking.ts` | Cron, every hour | Refreshes trackers of labels not delivered yet. |
 | `functions/easypost-webhook.ts` | Public route, `POST` | Receives EasyPost tracker events. |
 | `functions/test-connection.ts` | Settings action | Checks the key and lists carrier accounts. |
