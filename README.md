@@ -176,4 +176,4 @@ swell logs --type function -s EasyPost
 - **Webhook URL:** the webhook only responds after `swell app push`; under `swell app dev` it isn't reachable publicly.
 - **Webhook signature:** the signature is checked against `req.rawBody`. Swell keeps the exact text only for calls through the storefront gateway (the `{store-id}.swell.store` webhook URL). `swell api post '/functions/easypost/easypost-webhook'` re-serializes the body, so signed test calls must go to the webhook URL itself.
 
-Listing assets: `assets/icon.png` is a 512×512 placeholder icon, to be replaced with the EasyPost logo. `images` in `swell.json` points at four listing screenshots in `assets/screenshots/` (`1-settings.png`, `2-shipping.png`, `3-orders.png`, `4-order.png`). The images haven't been made yet.
+Listing assets: `assets/icon.png` is the EasyPost hexagon mark (512×512, EasyPost blue `#164DFF` on white), rendered from the official vector icon on docs.easypost.com. `images` in `swell.json` points at four listing screenshots in `assets/screenshots/` (`1-settings.png`, `2-shipping.png`, `3-orders.png`, `4-order.png`). The images haven't been made yet.
