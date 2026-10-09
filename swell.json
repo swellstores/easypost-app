@@ -33,12 +33,12 @@
     {
       "id": "labels",
       "title": "Labels bought for you",
-      "description": "When an order is paid, the app buys the label for the service the customer chose, or you buy it from the order page.",
+      "description": "When an order is paid, the app buys the label for the service the customer chose, and the order list shows its EasyPost status.",
       "image_src": "assets/screenshots/3-orders.png"
     },
     {
       "id": "tracking",
-      "title": "Tracking on every order",
+      "title": "Tracked until delivered",
       "description": "Each order gets a Swell shipment with the tracking number, a link to the label and live tracking from EasyPost.",
       "image_src": "assets/screenshots/4-order.png"
     }
