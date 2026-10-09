@@ -3,7 +3,7 @@
 	"name": "EasyPost",
 	"description": "Live EasyPost rates at checkout, labels and tracking for Swell orders",
 	"type": "integration",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"support_email": "support@swell.is",
 	"permissions": [],
 	"integrations": [
