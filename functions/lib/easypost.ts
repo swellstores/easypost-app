@@ -281,9 +281,17 @@ export function buildParcel(items: any[], settings: EasyPostSettings, weightUnit
   };
 }
 
-// customs declaration for labels that leave the ship-from country
-export function buildCustomsInfo(record: any, settings: EasyPostSettings, weightUnit: string, parcelWeight: number) {
+// customs declaration for labels that leave the ship-from country; item values are in the order currency.
+// HS code and origin come from the app's product fields (easypost_hs_code, easypost_origin_country)
+export function buildCustomsInfo(
+  record: any,
+  settings: EasyPostSettings,
+  weightUnit: string,
+  parcelWeight: number,
+  appId?: string,
+) {
   const items = shippableItems(record);
+  const currency = String(record?.currency || 'USD').toUpperCase();
   const totalQuantity = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0) || 1;
 
   return {
@@ -298,14 +306,18 @@ export function buildCustomsInfo(record: any, settings: EasyPostSettings, weight
       const weight = Number(item.shipment_weight) > 0
         ? toOunces(Number(item.shipment_weight), weightUnit)
         : Math.max(round1((parcelWeight * quantity) / totalQuantity), 0.1);
+      const productData = getAppData(item.product, appId);
+      const hsCode = String(productData.easypost_hs_code || '').trim();
+      const origin = String(productData.easypost_origin_country || '').trim();
       return {
         description: (item.product?.name || item.product_name || 'Merchandise').slice(0, 255),
         quantity,
         value: money(item.price_total),
+        currency,
         weight,
         code: item.variant?.sku || item.product?.sku || undefined,
-        hs_tariff_number: item.product?.hs_code || undefined,
-        origin_country: (item.product?.origin_country || settings.from_country || 'US').toUpperCase(),
+        hs_tariff_number: hsCode || undefined,
+        origin_country: (origin || settings.from_country || 'US').toUpperCase(),
       };
     }),
   };
@@ -317,6 +329,7 @@ export interface ShipmentOptions {
   reference?: string;
   customs?: boolean;
   labelFormat?: string;
+  appId?: string;
 }
 
 // POST /shipments body for a cart or order; null until there is something to rate
@@ -324,7 +337,7 @@ export function buildShipment(
   record: any,
   settings: EasyPostSettings,
   weightUnit: string,
-  { reference, customs = false, labelFormat }: ShipmentOptions = {},
+  { reference, customs = false, labelFormat, appId }: ShipmentOptions = {},
 ) {
   const from = fromAddress(settings);
   const to = toAddress(record?.shipping, record?.account?.email);
@@ -346,7 +359,7 @@ export function buildShipment(
       ...(reference && { reference }),
       ...(carrierAccounts.length && { carrier_accounts: carrierAccounts }),
       ...(labelFormat && { options: { label_format: labelFormat } }),
-      ...(customs && international && { customs_info: buildCustomsInfo(record, settings, weightUnit, parcel.weight) }),
+      ...(customs && international && { customs_info: buildCustomsInfo(record, settings, weightUnit, parcel.weight, appId) }),
     },
   };
 }
@@ -518,7 +531,8 @@ export function chooseLabelRate(rates: EasyPostRate[], order: any, settings: Eas
   const isEasyPost = chosen.startsWith(SERVICE_PREFIX);
 
   if (mode !== 'cheapest' && isEasyPost) {
-    const match = (rates || []).find((rate) => serviceId(rate) === chosen);
+    // several carrier accounts can quote the same service; checkout showed the cheapest
+    const match = cheapestRate((rates || []).filter((rate) => serviceId(rate) === chosen));
     if (match) {
       return { rate: match };
     }
@@ -550,8 +564,8 @@ export function labelUrl(postageLabel: any, format?: string): string | undefined
 }
 
 // app values on a standard record are keyed by app slug in responses
-export function getAppData(record: any, appId: string): Record<string, any> {
-  return record?.$app?.[appId] || record?.$app?.easypost || {};
+export function getAppData(record: any, appId?: string): Record<string, any> {
+  return (appId && record?.$app?.[appId]) || record?.$app?.easypost || {};
 }
 
 // Swell carrier ids are lowercase: "USPS" -> usps, "FedEx" -> fedex, "DHLExpress" -> dhlexpress

@@ -176,7 +176,7 @@
           "label": "Buy EasyPost label",
           "function": "buy-label",
           "loading_label": "Buying…",
-          "hint": "Buys a label from your EasyPost account for the service the customer chose",
+          "hint": "Buys a label from your EasyPost account for the service set in Label service",
           "conditions": {
             "easypost_status": {
               "$ne": "label_purchased"
@@ -188,7 +188,7 @@
           "label": "Void EasyPost label",
           "function": "void-label",
           "loading_label": "Voiding…",
-          "hint": "Asks the carrier to refund the label and cancels its Swell shipment",
+          "hint": "Asks the carrier to refund the label and cancels the Swell shipment the app created",
           "conditions": {
             "easypost_status": "label_purchased"
           }

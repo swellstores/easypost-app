@@ -313,7 +313,7 @@
               "label": "Always the cheapest"
             }
           ],
-          "description": "The cheapest is used for orders shipped with a non-EasyPost service"
+          "description": "For orders shipped with a non-EasyPost service, the first and last options buy the cheapest rate; Only the service the customer chose buys no label"
         },
         {
           "id": "label_format",

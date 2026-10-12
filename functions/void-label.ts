@@ -25,8 +25,9 @@ export default async function (req: SwellRequest) {
 
   const result = await voidLabel(req, orderId, settings);
   if (result.voided) {
+    const canceled = result.shipment_canceled ? 'the Swell shipment was canceled and ' : '';
     return {
-      message: `Label voided. Refund ${result.refund_status}; the Swell shipment was canceled and a new label can be bought.`,
+      message: `Label voided. Refund ${result.refund_status}; ${canceled}a new label can be bought.`,
     };
   }
   return { message: `Not voided: ${result.reason}.` };

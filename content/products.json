@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.swell.store/content.json",
+  "collection": "products",
+  "description": "Customs details for EasyPost international labels",
+  "fields": [
+    {
+      "id": "easypost_hs_code",
+      "label": "HS code",
+      "type": "short_text",
+      "description": "Harmonized System tariff code for customs, e.g. 6912.00"
+    },
+    {
+      "id": "easypost_origin_country",
+      "label": "Country of origin",
+      "type": "short_text",
+      "description": "Two-letter country code, e.g. PT. Defaults to the ship-from country."
+    }
+  ],
+  "views": [
+    {
+      "id": "edit",
+      "tabs": [
+        {
+          "id": "easypost",
+          "label": "EasyPost",
+          "fields": [
+            {
+              "type": "field_row",
+              "fields": [
+                {
+                  "id": "easypost_hs_code",
+                  "admin_span": 2
+                },
+                {
+                  "id": "easypost_origin_country",
+                  "admin_span": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

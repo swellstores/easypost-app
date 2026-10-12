@@ -90,6 +90,7 @@ export function makeBoughtShipment(overrides: Record<string, any> = {}) {
     postage_label: {
       label_url: "https://easypost-files.s3.amazonaws.com/label.png",
       label_pdf_url: "https://easypost-files.s3.amazonaws.com/label.pdf",
+      label_date: "2026-10-02T09:00:00Z",
     },
     tracker: { id: "trk_1", status: "pre_transit", public_url: "https://track.easypost.com/trk_1" },
     ...overrides,

@@ -45,6 +45,10 @@
     "easypost_label_currency": {
       "type": "string"
     },
+    "easypost_label_date": {
+      "type": "date",
+      "description": "When the label was bought; tracking is refreshed for 60 days after"
+    },
     "easypost_refund_status": {
       "type": "string",
       "description": "submitted, refunded or rejected after the label is voided"

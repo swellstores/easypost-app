@@ -25,7 +25,7 @@ export const STATUS_ERROR = 'error';
 
 // tracker statuses after which a parcel is no longer refreshed
 export const FINAL_TRACKING_STATUSES = ['delivered', 'return_to_sender', 'failure', 'cancelled', 'error'];
-// labels on orders older than this are no longer refreshed
+// labels bought longer ago than this are no longer refreshed
 export const MAX_TRACKING_AGE_DAYS = 60;
 // orders refreshed per pass; one EasyPost request each
 export const DEFAULT_BATCH_SIZE = 20;
@@ -157,6 +157,7 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
         reference: String(order.number || order.id),
         customs: true,
         labelFormat: settings.label_format || 'PDF',
+        appId,
       });
 
       if (!body) {
@@ -197,6 +198,7 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
       easypost_service: label.service || null,
       easypost_label_cost: Number(selected?.rate) || null,
       easypost_label_currency: selected?.currency || null,
+      easypost_label_date: bought.postage_label?.label_date || new Date().toISOString(),
       easypost_tracking_status: bought.tracker?.status || null,
       easypost_refund_status: null,
       easypost_error: null,
@@ -229,6 +231,7 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
 export interface VoidResult {
   voided: boolean;
   refund_status?: string;
+  shipment_canceled?: boolean;
   reason?: string;
 }
 
@@ -259,7 +262,8 @@ export async function voidLabel(req: SwellRequest, orderId: string, settings: Ea
     return { voided: false, refund_status: refundStatus, reason: 'The carrier rejected the refund' };
   }
 
-  if (appData.easypost_swell_shipment_id) {
+  const shipmentCanceled = Boolean(appData.easypost_swell_shipment_id);
+  if (shipmentCanceled) {
     await swell.put(`/shipments/${appData.easypost_swell_shipment_id}`, { canceled: true });
     console.log(`EasyPost: canceled shipment ${appData.easypost_swell_shipment_id} for order ${order.number}`);
   }
@@ -278,7 +282,7 @@ export async function voidLabel(req: SwellRequest, orderId: string, settings: Ea
     }),
   );
 
-  return { voided: true, refund_status: refundStatus };
+  return { voided: true, refund_status: refundStatus, shipment_canceled: shipmentCanceled };
 }
 
 async function findOrderByAppField(req: SwellRequest, field: string, value: string): Promise<any | null> {
@@ -352,7 +356,11 @@ export async function getTrackingOrders(req: SwellRequest, limit: number): Promi
       [`${prefix}.easypost_status`]: STATUS_LABEL_PURCHASED,
       [`${prefix}.easypost_tracker_id`]: { $ne: null },
       [`${prefix}.easypost_tracking_status`]: { $nin: FINAL_TRACKING_STATUSES },
-      date_created: { $gte: cutoff },
+      // labels bought before easypost_label_date was saved fall back to the order date
+      $or: [
+        { [`${prefix}.easypost_label_date`]: { $gte: cutoff } },
+        { [`${prefix}.easypost_label_date`]: null, date_created: { $gte: cutoff } },
+      ],
     },
     sort: `${prefix}.easypost_checked_at asc`,
     limit,

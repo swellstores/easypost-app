@@ -157,9 +157,20 @@ describe("void-label", () => {
   it("voids the label", async () => {
     quiet();
     mockEasyPost({ "POST /shipments/shp_1/refund": { refund_status: "submitted" } });
-    const order = makeOrder({ $app: { easypost: { easypost_status: "label_purchased", easypost_shipment_id: "shp_1" } } });
+    const order = makeOrder({
+      $app: { easypost: { easypost_status: "label_purchased", easypost_shipment_id: "shp_1", easypost_swell_shipment_id: "sw_1" } },
+    });
     expect(await voidLabel(voidRequest(SETTINGS, order))).toEqual({
       message: "Label voided. Refund submitted; the Swell shipment was canceled and a new label can be bought.",
+    });
+  });
+
+  it("doesn't mention a Swell shipment when the app didn't create one", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments/shp_1/refund": { refund_status: "submitted" } });
+    const order = makeOrder({ $app: { easypost: { easypost_status: "label_purchased", easypost_shipment_id: "shp_1" } } });
+    expect(await voidLabel(voidRequest(SETTINGS, order))).toEqual({
+      message: "Label voided. Refund submitted; a new label can be bought.",
     });
   });
 

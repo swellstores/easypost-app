@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.swell.store/model.json",
+  "collection": "products",
+  "description": "Customs details for EasyPost international labels",
+  "fields": {
+    "easypost_hs_code": {
+      "type": "string",
+      "description": "Harmonized System tariff code declared on customs forms"
+    },
+    "easypost_origin_country": {
+      "type": "string",
+      "description": "Two-letter country code where the product was made; defaults to the ship-from country"
+    }
+  }
+}

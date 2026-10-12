@@ -278,7 +278,7 @@ describe("customs", () => {
   it("declares each item with value, weight and origin", () => {
     const order = makeOrder({
       items: [
-        { delivery: "shipment", quantity: 2, shipment_weight: 1, price_total: 30, product: { name: "Mug", sku: "MUG", hs_code: "6912.00", origin_country: "pt" } },
+        { delivery: "shipment", quantity: 2, shipment_weight: 1, price_total: 30, product: { name: "Mug", sku: "MUG", $app: { easypost: { easypost_hs_code: " 6912.00 ", easypost_origin_country: "pt" } } } },
         { delivery: "shipment", quantity: 2, price_total: 10, product_name: "Card", variant: { sku: "CARD-1" } },
       ],
     });
@@ -292,9 +292,18 @@ describe("customs", () => {
       restriction_type: "none",
     });
     expect(customs.customs_items).toEqual([
-      { description: "Mug", quantity: 2, value: "30.00", weight: 16, code: "MUG", hs_tariff_number: "6912.00", origin_country: "PT" },
-      { description: "Card", quantity: 2, value: "10.00", weight: 20, code: "CARD-1", hs_tariff_number: undefined, origin_country: "US" },
+      { description: "Mug", quantity: 2, value: "30.00", currency: "USD", weight: 16, code: "MUG", hs_tariff_number: "6912.00", origin_country: "PT" },
+      { description: "Card", quantity: 2, value: "10.00", currency: "USD", weight: 20, code: "CARD-1", hs_tariff_number: undefined, origin_country: "US" },
     ]);
+  });
+
+  it("declares values in the order currency and reads the installed app's product fields", () => {
+    const order = makeOrder({
+      currency: "eur",
+      items: [{ delivery: "shipment", price_total: 5, product: { $app: { easypost_dev: { easypost_hs_code: "4901.99" } } } }],
+    });
+    const item = buildCustomsInfo(order, SETTINGS, "lb", 16, "easypost_dev").customs_items[0];
+    expect(item).toMatchObject({ currency: "EUR", hs_tariff_number: "4901.99" });
   });
 
   it("falls back for the signer and origin", () => {
@@ -411,6 +420,11 @@ describe("label rate choice", () => {
 
   it("uses the service the customer chose", () => {
     expect(chooseLabelRate(rates, makeOrder(), SETTINGS)).toEqual({ rate: rates[0] });
+  });
+
+  it("buys the cheapest quote for the chosen service across carrier accounts", () => {
+    const twoAccounts = [makeRate({ id: "rate_a", rate: "9.00" }), makeRate({ id: "rate_b", rate: "7.25" }), ...rates] as any;
+    expect(chooseLabelRate(twoAccounts, makeOrder(), SETTINGS).rate?.id).toBe("rate_b");
   });
 
   it("falls back to the cheapest when the chosen service is gone or not EasyPost", () => {

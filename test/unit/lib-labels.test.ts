@@ -138,6 +138,7 @@ describe("buyLabel", () => {
       easypost_service: "Priority",
       easypost_label_cost: 7.5,
       easypost_label_currency: "USD",
+      easypost_label_date: "2026-10-02T09:00:00Z",
       easypost_tracking_status: "pre_transit",
       easypost_refund_status: null,
       easypost_error: null,
@@ -267,7 +268,7 @@ describe("voidLabel", () => {
     const put = vi.fn().mockResolvedValue({});
     const req = request({ get: vi.fn().mockResolvedValue(labeled()), put });
 
-    expect(await voidLabel(req, ORDER_ID, SETTINGS)).toEqual({ voided: true, refund_status: "submitted" });
+    expect(await voidLabel(req, ORDER_ID, SETTINGS)).toEqual({ voided: true, refund_status: "submitted", shipment_canceled: true });
     expect(put).toHaveBeenCalledWith("/shipments/sw_1", { canceled: true });
     expect(savedValues(put)).toEqual({
       easypost_status: "voided",
@@ -288,6 +289,7 @@ describe("voidLabel", () => {
     expect(await voidLabel(request({ get: vi.fn().mockResolvedValue(order), put }), ORDER_ID, SETTINGS)).toEqual({
       voided: true,
       refund_status: "submitted",
+      shipment_canceled: false,
     });
     expect(put).toHaveBeenCalledTimes(1);
   });
@@ -401,7 +403,10 @@ describe("tracking", () => {
         "$app.easypost.easypost_status": "label_purchased",
         "$app.easypost.easypost_tracker_id": { $ne: null },
         "$app.easypost.easypost_tracking_status": { $nin: FINAL_TRACKING_STATUSES },
-        date_created: { $gte: expect.any(String) },
+        $or: [
+          { "$app.easypost.easypost_label_date": { $gte: expect.any(String) } },
+          { "$app.easypost.easypost_label_date": null, date_created: { $gte: expect.any(String) } },
+        ],
       },
       sort: "$app.easypost.easypost_checked_at asc",
       limit: 5,
