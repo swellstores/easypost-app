@@ -1,12 +1,12 @@
-# EasyPost
+Show your customers live EasyPost carrier rates at checkout, and buy shipping labels from your EasyPost account. Each label fulfills the order with the carrier and tracking number, and the tracking status stays up to date on the order until the parcel is delivered.
 
-Show live EasyPost carrier rates at checkout, buy shipping labels from your EasyPost account, and keep each order's tracking status up to date in Swell.
+Connect EasyPost with an API key, add the address your parcels ship from, and turn on EasyPost in Settings → Shipping. Rates and labels come from the carrier accounts in your EasyPost account, and labels are charged to it.
 
-## How it works
+- **Live rates at checkout.** Every carrier service, such as USPS Priority or UPS Ground, becomes a checkout option with its price and estimated delivery days. Limit the carrier accounts and services, and add a markup or a handling fee.
+- **Labels when you want them.** Buy a label from the order page, or have the app buy it automatically when an order is paid or submitted. It buys the service the customer chose, or the cheapest rate, as you set in the app.
+- **Fulfilled with the label.** Each label creates a Swell shipment with the carrier, service and tracking number, and the order's EasyPost tab links to the label in PDF, PNG or ZPL.
+- **Customs for international orders.** Labels to other countries include a customs declaration built from the order's items.
+- **Tracking on every order.** Every hour, or as it happens with the optional EasyPost webhook, the app saves each parcel's tracking status, latest scan and estimated delivery on the order. The order list shows each order's EasyPost status.
+- **Void a label you don't need.** Void EasyPost label asks the carrier to refund the label and cancels its Swell shipment, so you can buy a new one.
 
-1. **Rates at checkout.** When a customer enters a shipping address, the app asks EasyPost for rates from your ship-from address for one parcel (your default box, weighed from the items). Each carrier service becomes a checkout option, with an optional markup and handling fee. Swell's own shipping services stay as they are.
-2. **Labels.** With **Buy EasyPost label** on the order page, or automatically when an order is paid or submitted, the app buys the service the customer chose, or the cheapest rate if that service isn't offered. International labels get a customs declaration from the order items. A label is never bought twice for the same order.
-3. **Fulfillment.** After buying, the order is fulfilled with a Swell shipment, and an EasyPost tab shows the carrier, tracking number, label link and postage. **Void EasyPost label** refunds the label and cancels the shipment.
-4. **Tracking.** Every hour, or as it happens with the webhook, the app saves each parcel's tracking status, latest scan and estimated delivery on the order until it's delivered.
-
-Setup: paste your EasyPost API key and ship-from address in the app settings, choose when to buy labels, then turn on EasyPost in Settings → Shipping.
+Setup takes a few minutes. In EasyPost, copy an API key from Account Settings → API Keys. In Swell, enter it in the app settings with your ship-from address and default parcel size, choose when to buy labels, run Test connection, then turn on EasyPost in Settings → Shipping and save.
