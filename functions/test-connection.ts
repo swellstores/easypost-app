@@ -1,4 +1,4 @@
-import { fromAddress, getEasyPostSettings, hasKey, isTestKey, listCarrierAccounts, verifyKey } from './lib/easypost';
+import { EasyPostError, fromAddress, getEasyPostSettings, hasKey, isTestKey, listCarrierAccounts, verifyKey } from './lib/easypost';
 
 export const config: SwellConfig = {
   description: 'Check the EasyPost API key',
@@ -14,8 +14,17 @@ export default async function (req: SwellRequest) {
 
   try {
     await verifyKey(settings);
-  } catch (err: any) {
-    return { message: `EasyPost rejected the request: ${err?.message || err}` };
+  } catch (err) {
+    if (err instanceof EasyPostError && (err.status === 401 || err.status === 403)) {
+      throw new SwellError(
+        "EasyPost didn't accept the API key. Copy it again from EasyPost → Account Settings → API Keys, save it, then test again.",
+        { status: 400 },
+      );
+    }
+    if (err instanceof EasyPostError) {
+      throw new SwellError(`${err.message.replace(/\.$/, '')}. Try again in a minute.`, { status: 400 });
+    }
+    throw new SwellError("Couldn't reach EasyPost. Try again in a minute.", { status: 400 });
   }
 
   const test = isTestKey(settings.api_key);

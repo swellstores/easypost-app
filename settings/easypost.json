@@ -59,7 +59,8 @@
         {
           "id": "from_street1",
           "label": "Street",
-          "type": "short_text"
+          "type": "short_text",
+          "required": true
         },
         {
           "id": "from_street2",
@@ -73,6 +74,7 @@
               "id": "from_city",
               "label": "City",
               "type": "short_text",
+              "required": true,
               "admin_span": 2
             },
             {
@@ -91,12 +93,14 @@
               "id": "from_zip",
               "label": "Postal code",
               "type": "short_text",
+              "required": true,
               "admin_span": 2
             },
             {
               "id": "from_country",
               "label": "Country code",
               "type": "short_text",
+              "required": true,
               "admin_span": 2,
               "placeholder": "US",
               "description": "2-letter ISO code"

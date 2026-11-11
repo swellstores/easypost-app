@@ -92,7 +92,10 @@ describe("test-connection", () => {
 
   it("reports a rejected key and asks for a key first", async () => {
     mockEasyPost({ "GET /shipments": jsonResponse({ error: { message: "Unauthorized" } }, 401) });
-    expect(await testConnection(request(SETTINGS))).toEqual({ message: "EasyPost rejected the request: EasyPost 401: Unauthorized" });
+    await expect(testConnection(request(SETTINGS))).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("EasyPost didn't accept the API key"),
+    });
     expect((await testConnection(request({}))).message).toMatch(/Add your EasyPost API key/);
   });
 });
