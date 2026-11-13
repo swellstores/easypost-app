@@ -21,6 +21,15 @@ function request(settings: Record<string, any>, swell: Record<string, any> = {},
   });
 }
 
+// failures are thrown as a 400 so the dashboard shows them as a red error popup
+async function expectFailure(result: Promise<unknown>, message: string | RegExp) {
+  await expect(result).rejects.toMatchObject({
+    name: "SwellError",
+    status: 400,
+    message: typeof message === "string" ? message : expect.stringMatching(message),
+  });
+}
+
 function quiet() {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -35,9 +44,9 @@ describe("while the app is turned off", () => {
     const message = "The EasyPost app is turned off. Turn on Enabled in the app settings first.";
     const action = { $action: { id: "x", source: "record", collection: "orders", record_id: ORDER_ID } };
 
-    expect(await buyLabel(request(off, { get }, action))).toEqual({ message });
-    expect(await voidLabel(request(off, { get }, action))).toEqual({ message });
-    expect(await refreshNow(request(off, { get }))).toEqual({ message });
+    await expectFailure(buyLabel(request(off, { get }, action)), message);
+    await expectFailure(voidLabel(request(off, { get }, action)), message);
+    await expectFailure(refreshNow(request(off, { get })), message);
     expect(get).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -96,7 +105,13 @@ describe("test-connection", () => {
       status: 400,
       message: expect.stringContaining("EasyPost didn't accept the API key"),
     });
-    expect((await testConnection(request({}))).message).toMatch(/Add your EasyPost API key/);
+    await expectFailure(testConnection(request({})), /Add your EasyPost API key/);
+  });
+
+  it("shows a failed settings read as a red popup with a message", async () => {
+    const req = request({});
+    (req.swell.settings as any).mockRejectedValue(new Error("settings unavailable"));
+    await expectFailure(testConnection(req), "Test connection failed: settings unavailable");
   });
 });
 
@@ -129,7 +144,7 @@ describe("buy-label", () => {
 
   it("explains why no label was bought", async () => {
     mockEasyPost({});
-    expect(await buyLabel(buyRequest(SETTINGS, makeOrder({ canceled: true })))).toEqual({ message: "No label bought: Order is canceled." });
+    await expectFailure(buyLabel(buyRequest(SETTINGS, makeOrder({ canceled: true }))), "No label bought: Order is canceled.");
   });
 
   it("says the label was bought when only the Swell shipment is still pending", async () => {
@@ -142,24 +157,25 @@ describe("buy-label", () => {
       body: { order_id: { message: "Order shipments are being updated, please try again" } },
     });
     (req.swell as any).post = vi.fn().mockRejectedValue(locked);
-    const { message } = await buyLabel(req);
-    expect(message).toMatch(/^The label was bought, but Swell couldn't create the shipment for order 100123 yet/);
-    expect(message).toContain("Buy the label again to finish; the bought label is reused.");
+    await expectFailure(
+      buyLabel(req),
+      /^The label was bought, but Swell couldn't create the shipment for order 100123 yet.*Buy the label again to finish; the bought label is reused\.$/,
+    );
   });
 
   it("reports EasyPost outages", async () => {
     quiet();
     mockEasyPost({ "POST /shipments": jsonResponse({ error: { message: "down" } }, 503) });
-    expect(await buyLabel(buyRequest(SETTINGS, makeOrder()))).toEqual({ message: "No label bought: EasyPost 503: down" });
+    await expectFailure(buyLabel(buyRequest(SETTINGS, makeOrder())), "No label bought: EasyPost 503: down");
 
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
-    expect(await buyLabel(buyRequest(SETTINGS, makeOrder()))).toEqual({ message: "No label bought: offline" });
+    await expectFailure(buyLabel(buyRequest(SETTINGS, makeOrder())), "No label bought: offline");
   });
 
   it("validates the record id and the key", async () => {
-    expect((await buyLabel(buyRequest(SETTINGS, null, "../settings"))).message).toBe("Open an order to buy its label.");
-    expect((await buyLabel(buyRequest(SETTINGS, null, null))).message).toBe("Open an order to buy its label.");
-    expect((await buyLabel(buyRequest({}, null))).message).toMatch(/Add your EasyPost API key/);
+    await expectFailure(buyLabel(buyRequest(SETTINGS, null, "../settings")), "Open an order to buy its label.");
+    await expectFailure(buyLabel(buyRequest(SETTINGS, null, null)), "Open an order to buy its label.");
+    await expectFailure(buyLabel(buyRequest({}, null)), /Add your EasyPost API key/);
   });
 });
 
@@ -193,14 +209,12 @@ describe("void-label", () => {
   });
 
   it("explains why it wasn't voided", async () => {
-    expect(await voidLabel(voidRequest(SETTINGS, makeOrder()))).toEqual({
-      message: "Not voided: The order has no EasyPost label to void.",
-    });
+    await expectFailure(voidLabel(voidRequest(SETTINGS, makeOrder())), "Not voided: The order has no EasyPost label to void.");
   });
 
   it("validates the record id and the key", async () => {
-    expect((await voidLabel(voidRequest(SETTINGS, null, "x"))).message).toBe("Open an order to void its label.");
-    expect((await voidLabel(voidRequest({}, null))).message).toMatch(/Add your EasyPost API key/);
+    await expectFailure(voidLabel(voidRequest(SETTINGS, null, "x")), "Open an order to void its label.");
+    await expectFailure(voidLabel(voidRequest({}, null)), /Add your EasyPost API key/);
   });
 });
 
@@ -214,10 +228,11 @@ describe("refresh-tracking-now", () => {
     const orders = ["trk_1", "trk_2"].map((id, i) => makeOrder({ id: `o${i}`, $app: { easypost: { easypost_tracker_id: id } } }));
     const req = request(SETTINGS, { get: vi.fn().mockResolvedValue({ results: orders, count: 30 }), put: vi.fn().mockResolvedValue({}) });
 
-    expect(await refreshNow(req)).toEqual({
-      message:
-        "Checked 2 labels, 1 updated, 1 with errors (see the function logs). More labels are waiting; run it again or wait for the next hourly refresh.",
-    });
+    // a label with an error makes the result an error popup, which still counts the rest
+    await expectFailure(
+      refreshNow(req),
+      "Checked 2 labels, 1 updated, 1 with errors (see the function logs). More labels are waiting; run it again or wait for the next hourly refresh.",
+    );
   });
 
   it("uses the singular for one label", async () => {
@@ -230,6 +245,6 @@ describe("refresh-tracking-now", () => {
   it("says when nothing is in transit and asks for a key first", async () => {
     const req = request(SETTINGS, { get: vi.fn().mockResolvedValue({ results: [], count: 0 }) });
     expect(await refreshNow(req)).toEqual({ message: "No EasyPost labels are waiting for delivery." });
-    expect((await refreshNow(request({}))).message).toMatch(/Add your EasyPost API key/);
+    await expectFailure(refreshNow(request({})), /Add your EasyPost API key/);
   });
 });

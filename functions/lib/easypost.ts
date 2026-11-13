@@ -86,6 +86,11 @@ export class EasyPostError extends Error {
   }
 }
 
+// a thrown 400 shows in the admin as a red error popup, a returned { message } as a regular one
+export function fail(message: string): never {
+  throw new SwellError(message, { status: 400 });
+}
+
 export async function getEasyPostSettings(swell: SwellAPI): Promise<EasyPostSettings> {
   const all = await swell.settings();
   return all?.easypost || {};
