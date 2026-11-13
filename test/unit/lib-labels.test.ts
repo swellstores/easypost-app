@@ -187,6 +187,11 @@ describe("findBoughtShipment", () => {
     mockEasyPost({});
     expect(await findBoughtShipment(SETTINGS, { easypost_shipment_id: "shp_1" })).toBeNull();
   });
+
+  it("rethrows other errors, so a label an earlier run bought isn't bought again", async () => {
+    mockEasyPost({ "GET /shipments/shp_1": jsonResponse({ error: { message: "down" } }, 503) });
+    await expect(findBoughtShipment(SETTINGS, { easypost_shipment_id: "shp_1" })).rejects.toMatchObject({ status: 503 });
+  });
 });
 
 describe("buyLabel", () => {
@@ -334,6 +339,29 @@ describe("buyLabel", () => {
       expect(swell.put).not.toHaveBeenCalled();
       vi.unstubAllGlobals();
     }
+  });
+
+  it("doesn't buy while another run that saved its shipment before this one loaded is still buying", async () => {
+    quiet();
+    const order = makeOrder({ $app: { easypost: { easypost_shipment_id: "shp_0" } } });
+    const recent = new Date(Date.now() - 30_000).toISOString();
+    const { calls } = mockEasyPost({ "GET /shipments/shp_0": { id: "shp_0", created_at: recent } });
+
+    expect(await buyLabel(request(swellFor(order)), ORDER_ID, SETTINGS)).toEqual({ bought: false, reason: ALREADY_BUYING_REASON });
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+  });
+
+  it("buys again once an unfinished run's shipment is older than the buying window", async () => {
+    quiet();
+    const order = makeOrder({ $app: { easypost: { easypost_shipment_id: "shp_0" } } });
+    const old = new Date(Date.now() - 5 * 60_000).toISOString();
+    mockEasyPost({
+      "GET /shipments/shp_0": { id: "shp_0", created_at: old },
+      "POST /shipments": { id: "shp_1", rates: [makeRate()] },
+      "POST /shipments/shp_1/buy": makeBoughtShipment(),
+    });
+
+    expect((await buyLabel(request(swellFor(order)), ORDER_ID, SETTINGS)).bought).toBe(true);
   });
 
   it("keeps a parallel run's label and only notes this extra one when Swell refuses the items", async () => {

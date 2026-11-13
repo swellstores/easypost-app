@@ -216,8 +216,25 @@ export async function findBoughtShipment(settings: EasyPostSettings, appData: Re
     const refunded = shipment?.refund_status && shipment.refund_status !== 'rejected';
     return shipment?.postage_label && !refunded ? shipment : null;
   } catch (err: any) {
-    console.warn(`EasyPost: could not load shipment ${appData.easypost_shipment_id} - ${err?.message || err}`);
-    return null;
+    // only a 404 means no label; other errors are rethrown so a bought label isn't bought again
+    if (err instanceof EasyPostError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+// how long an unbought shipment on the order counts as another run still buying
+export const BUYING_WINDOW_MS = 2 * 60 * 1000;
+
+// another run saved its shipment and is still buying (a crashed run stops counting after BUYING_WINDOW_MS)
+async function buyingElsewhere(settings: EasyPostSettings, appData: Record<string, any>): Promise<boolean> {
+  if (!appData.easypost_shipment_id || appData.easypost_status) return false;
+  try {
+    const shipment = await getShipment(settings, appData.easypost_shipment_id);
+    const created = Date.parse(shipment?.created_at);
+    return !shipment?.postage_label && Number.isFinite(created) && Date.now() - created < BUYING_WINDOW_MS;
+  } catch (err: any) {
+    if (err instanceof EasyPostError && err.status === 404) return false;
+    throw err;
   }
 }
 
@@ -261,6 +278,10 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
     // a previous run may have bought the label but timed out before saving it
     let bought = await findBoughtShipment(settings, appData);
     let selected: any = bought?.selected_rate;
+
+    if (!bought && (await buyingElsewhere(settings, appData))) {
+      return { bought: false, reason: ALREADY_BUYING_REASON };
+    }
 
     // With fulfillment on, don't buy a label for an order with nothing left to ship (with it off, the merchant may
     // have shipped it in Swell first)
