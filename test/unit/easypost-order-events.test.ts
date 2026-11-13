@@ -78,7 +78,7 @@ describe("easypost-order-events", () => {
     expect(error).toHaveBeenCalledWith("EasyPost: missing API key, no label bought");
   });
 
-  it("logs why no label was bought", async () => {
+  it("logs why no label was bought and notes it on the order", async () => {
     mockEasyPost({});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const { req, put } = request(SETTINGS, "order.paid", makeOrder({ canceled: true }));
@@ -86,6 +86,8 @@ describe("easypost-order-events", () => {
     await handler(req);
 
     expect(log).toHaveBeenCalledWith("EasyPost: no label for order 100123 - Order is canceled");
-    expect(put).not.toHaveBeenCalled();
+    expect(put).toHaveBeenCalledWith(expect.stringContaining("/orders/"), {
+      $app: { easypost: { easypost_note: "No label bought: Order is canceled." } },
+    });
   });
 });

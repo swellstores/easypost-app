@@ -59,6 +59,24 @@ export interface LabelDetails {
   tracking_url?: string;
 }
 
+// the order's items left to ship, with quantity, weight and price scaled to what's left, for the label's parcel and
+// customs
+function remainingItems(order: any): any[] {
+  return (order.items || [])
+    .filter((item: any) => item.delivery === 'shipment' && item.quantity_shipment_deliverable > 0)
+    .map((item: any) => {
+      const quantity = Number(item.quantity) || 1;
+      const left = Number(item.quantity_shipment_deliverable);
+      const share = Math.min(left / quantity, 1);
+      return {
+        ...item,
+        quantity: left,
+        shipment_weight: Number(item.shipment_weight) * share || 0,
+        price_total: Number(item.price_total) * share || 0,
+      };
+    });
+}
+
 // the order's items left to ship
 function deliverableItems(order: any) {
   return (order.items || [])
@@ -257,12 +275,18 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
     return { bought: false, tracking_code: appData.easypost_tracking_code, reason: 'A label was already bought' };
   }
 
+  // a note on the order's tab, so a skipped automatic buy is visible too
+  const skip = async (reason: string): Promise<BuyResult> => {
+    await swell.put(`/orders/${orderId}`, req.appValues({ easypost_note: `No label bought: ${reason}.` }));
+    return { bought: false, reason };
+  };
+
   if (order.canceled) {
-    return { bought: false, reason: 'Order is canceled' };
+    return skip('Order is canceled');
   }
 
   if (!shippableItems(order).length) {
-    return { bought: false, reason: 'Order has no items to ship' };
+    return skip('Order has no items to ship');
   }
 
   const fail = async (reason: string): Promise<BuyResult> => {
@@ -286,12 +310,14 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
     // With fulfillment on, don't buy a label for an order with nothing left to ship (with it off, the merchant may
     // have shipped it in Swell first)
     if (!bought && settings.create_fulfillment !== false && !deliverableItems(order).length) {
-      return { bought: false, reason: NOTHING_LEFT_REASON };
+      return skip(NOTHING_LEFT_REASON);
     }
 
     if (!bought) {
       const weightUnit = await getWeightUnit(swell);
-      const body = buildShipment(order, settings, weightUnit, {
+      // with fulfillment on, the label covers only what the Swell shipment will: the items left to ship
+      const shipped = settings.create_fulfillment !== false ? { ...order, items: remainingItems(order) } : order;
+      const body = buildShipment(shipped, settings, weightUnit, {
         reference: String(order.number || order.id),
         customs: true,
         labelFormat: settings.label_format || 'PDF',

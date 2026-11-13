@@ -303,6 +303,7 @@ export function buildCustomsInfo(
     contents_type: 'merchandise',
     customs_certify: true,
     customs_signer: settings.customs_signer?.trim() || settings.from_name?.trim() || settings.from_company?.trim(),
+    // US export exemption (no EEI filing under $2,500 per item type); only fits a US ship-from address
     eel_pfc: 'NOEEI 30.37(a)',
     non_delivery_option: 'return',
     restriction_type: 'none',

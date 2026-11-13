@@ -278,7 +278,26 @@ describe("buyLabel", () => {
 
     expect(await buyLabel(request(swell), ORDER_ID, SETTINGS)).toEqual({ bought: false, reason: NOTHING_LEFT_REASON });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(swell.put).not.toHaveBeenCalled();
+    // only a note: a skipped automatic buy shows on the order's tab
+    expect(savedValues(swell.put)).toEqual({ easypost_note: `No label bought: ${NOTHING_LEFT_REASON}.` });
+  });
+
+  it("weighs and declares only the items left to ship when part of the order was shipped elsewhere", async () => {
+    quiet();
+    const { calls } = mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
+    // 2 ordered (3 lb, $39.90 for the line), 1 left to ship; international, so customs are sent too
+    const order = makeOrder({
+      shipping: { ...makeOrder().shipping, country: "CA", state: "ON", zip: "M5V 2T6", city: "Toronto" },
+      items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 1 }],
+    });
+
+    await buyLabel(request(swellFor(order)), ORDER_ID, SETTINGS);
+
+    const shipment = calls[0].body.shipment;
+    expect(shipment.parcel.weight).toBe(24);
+    expect(shipment.customs_info.customs_items).toEqual([
+      expect.objectContaining({ quantity: 1, value: "19.95", weight: 24 }),
+    ]);
   });
 
   it("buys a label for an order already shipped in Swell when fulfillment is off", async () => {
