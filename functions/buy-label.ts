@@ -32,6 +32,8 @@ export default async function (req: SwellRequest) {
   }
 
   if (result.extra_label) fail(result.reason!);
+  // the label was bought, but another shipment had already shipped the items
+  if (result.shipped_elsewhere_note) fail(result.shipped_elsewhere_note);
   if (!result.bought) fail(`No label bought: ${result.reason}.`);
 
   const service = [result.carrier, humanizeService(result.service)].filter(Boolean).join(' ');

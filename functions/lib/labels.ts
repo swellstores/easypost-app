@@ -46,6 +46,8 @@ export interface BuyResult {
   reason?: string;
   // a parallel run's label is kept on the order, so this one is extra
   extra_label?: boolean;
+  // set when the label was bought but its items were already shipped elsewhere: the note saved on the order
+  shipped_elsewhere_note?: string;
   carrier?: string;
   service?: string;
   tracking_code?: string;
@@ -399,7 +401,13 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
     await swell.put(`/orders/${orderId}`, req.appValues(values));
     console.log(`EasyPost: bought ${label.carrier} ${label.service} label ${label.tracking_code} for order ${order.number}`);
 
-    return { bought: true, carrier: label.carrier, service: label.service, tracking_code: label.tracking_code };
+    return {
+      bought: true,
+      carrier: label.carrier,
+      service: label.service,
+      tracking_code: label.tracking_code,
+      ...(values.easypost_status === STATUS_SHIPPED_ELSEWHERE && { shipped_elsewhere_note: values.easypost_note }),
+    };
   } catch (err: any) {
     const message = err?.message || String(err);
     console.error(`EasyPost: failed to buy a label for order ${order.number} - ${message}`);

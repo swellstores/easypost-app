@@ -163,6 +163,28 @@ describe("buy-label", () => {
     );
   });
 
+  it("shows a red popup when the label was bought but the items were already shipped elsewhere", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
+    const req = buyRequest(SETTINGS, makeOrder());
+    const shippedOrder = makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 0 }] });
+    const route = (req.swell as any).get;
+    // read with expand: the order as loaded; read again after the refusal: nothing left to ship
+    (req.swell as any).get = vi.fn(async (url: string, ...args: any[]) =>
+      url === "/shipments" ? { results: [] } : url === `/orders/${ORDER_ID}` && args.length === 0 && (req.swell as any).post.mock.calls.length
+        ? shippedOrder
+        : route(url, ...args),
+    );
+    (req.swell as any).post = vi.fn().mockRejectedValue(
+      Object.assign(new Error("POST /shipments"), {
+        name: "SwellError",
+        status: 400,
+        body: { items: { message: "Cannot ship 1 of item item_1, only 0 left to deliver" } },
+      }),
+    );
+    await expectFailure(buyLabel(req), /^Label bought, but no Swell shipment was created: .*Cannot ship 1 of item item_1.*Void the label if it isn't needed\.$/);
+  });
+
   it("reports EasyPost outages", async () => {
     quiet();
     mockEasyPost({ "POST /shipments": jsonResponse({ error: { message: "down" } }, 503) });
