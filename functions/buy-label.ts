@@ -29,6 +29,7 @@ export default async function (req: SwellRequest) {
       const service = [result.carrier, humanizeService(result.service)].filter(Boolean).join(' ');
       return { message: `Bought a ${service} label. Tracking number ${result.tracking_code || 'pending'}.` };
     }
+    if (result.extra_label) return { message: result.reason };
     return { message: `No label bought: ${result.reason}.` };
   } catch (err: any) {
     // the label was bought; only the Swell shipment is pending

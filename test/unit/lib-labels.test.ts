@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FINAL_TRACKING_STATUSES,
+  ALREADY_BUYING_REASON,
   ItemsAlreadyShipped,
   NOTHING_LEFT_REASON,
+  extraLabelNote,
   ShipmentPending,
   applyTracker,
   buyLabel,
@@ -313,6 +315,53 @@ describe("buyLabel", () => {
     // the id saved before buying lets a retry reuse the label
     expect(swell.put).toHaveBeenCalledWith(`/orders/${ORDER_ID}`, { $app: { easypost: { easypost_shipment_id: "shp_1" } } });
     expect(savedValues(swell.put)).toMatchObject({ easypost_status: "error", easypost_error: expect.stringContaining("The label was bought") });
+  });
+
+  it("doesn't buy when another run started buying after the order was loaded", async () => {
+    quiet();
+    for (const easypost of [{ easypost_shipment_id: "shp_other" }, { easypost_status: "label_purchased", easypost_shipment_id: "shp_other" }]) {
+      const { calls } = mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] } });
+      const swell = swellFor(makeOrder());
+      // no label when loaded, the other run's shipment when read again before buying
+      swell.get = vi.fn(async (url: string, ...args: any[]) =>
+        url === `/orders/${ORDER_ID}` && args.length === 0
+          ? makeOrder({ $app: { easypost } })
+          : url === `/orders/${ORDER_ID}` ? makeOrder() : { weight_unit: "lb" },
+      ) as any;
+
+      expect(await buyLabel(request(swell), ORDER_ID, SETTINGS)).toEqual({ bought: false, reason: ALREADY_BUYING_REASON });
+      expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /shipments"]);
+      expect(swell.put).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps a parallel run's label and only notes this extra one when Swell refuses the items", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments": { id: "shp_2", rates: [makeRate()] }, "POST /shipments/shp_2/buy": makeBoughtShipment({ id: "shp_2", tracking_code: "9400222" }) });
+    const first = { easypost_status: "label_purchased", easypost_shipment_id: "shp_1", easypost_swell_shipment_id: "sw_1" };
+    let reads = 0;
+    const swell = {
+      ...swellFor(makeOrder()),
+      post: vi.fn().mockRejectedValue(refused({ items: { message: NOT_LEFT } })),
+      get: vi.fn(async (url: string, ...args: any[]) => {
+        if (url === "/shipments") return { results: [] };
+        if (url !== `/orders/${ORDER_ID}`) return { weight_unit: "lb" };
+        if (args.length) return makeOrder();
+        // nothing before buying; the first run's label and shipment after the refusal
+        reads++;
+        return reads === 1
+          ? makeOrder()
+          : makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 0 }], $app: { easypost: first } });
+      }),
+    };
+
+    const result = await buyLabel(request(swell as any), ORDER_ID, SETTINGS);
+
+    const note = extraLabelNote({ shipment_id: "shp_2", tracking_code: "9400222" });
+    expect(result).toEqual({ bought: false, extra_label: true, reason: note });
+    // only the note is written; the first run's label stays
+    expect(savedValues(swell.put)).toEqual({ easypost_note: note });
   });
 
   it("doesn't buy a second label for an order shipped elsewhere", async () => {

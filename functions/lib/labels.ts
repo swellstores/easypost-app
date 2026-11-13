@@ -27,6 +27,8 @@ export const STATUS_ERROR = 'error';
 // statuses with a bought label: voidable, tracked, no second label
 export const LABEL_STATUSES = [STATUS_LABEL_PURCHASED, STATUS_SHIPPED_ELSEWHERE];
 
+export const ALREADY_BUYING_REASON = 'A label is already being bought for this order';
+
 export const NOTHING_LEFT_REASON =
   "Nothing left to ship: the order's items were already shipped by another shipment, or refunded or canceled";
 
@@ -42,6 +44,8 @@ export const DEFAULT_BUDGET_MS = 6000;
 export interface BuyResult {
   bought: boolean;
   reason?: string;
+  // a parallel run's label is kept on the order, so this one is extra
+  extra_label?: boolean;
   carrier?: string;
   service?: string;
   tracking_code?: string;
@@ -87,6 +91,10 @@ export class ShipmentPending extends Error {}
 
 export function itemsShippedNote(reason: string): string {
   return `Label bought, but no Swell shipment was created: the order's items were already shipped by another shipment, or refunded or canceled (${reason}). Void the label if it isn't needed.`;
+}
+
+export function extraLabelNote(label: LabelDetails): string {
+  return `A second label was bought at the same time by another run and isn't used (EasyPost shipment ${label.shipment_id}, tracking ${label.tracking_code || 'none'}). Void it in EasyPost.`;
 }
 
 // errors of a write Swell refused, from the SwellError's body
@@ -281,6 +289,15 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
         return fail([choice.reason, ...messages].filter(Boolean).join('. '));
       }
 
+      // another run may have started buying since the order was loaded: don't pay for a second label
+      const current = getAppData(await swell.get(`/orders/${orderId}`), appId);
+      if (
+        LABEL_STATUSES.includes(current.easypost_status) ||
+        (current.easypost_shipment_id || null) !== (appData.easypost_shipment_id || null)
+      ) {
+        return { bought: false, reason: ALREADY_BUYING_REASON };
+      }
+
       // remember the shipment before buying, so a retry can find a label bought by this run
       await swell.put(`/orders/${orderId}`, req.appValues({ easypost_shipment_id: shipment.id }));
 
@@ -319,6 +336,14 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
         values.easypost_swell_shipment_id = await createSwellShipment(swell, order, label);
       } catch (err) {
         if (!(err instanceof ItemsAlreadyShipped)) throw err;
+        // a parallel run shipped the order with its own label: keep it, note this one as extra
+        const current = getAppData(await swell.get(`/orders/${orderId}`), appId);
+        if (current.easypost_swell_shipment_id && current.easypost_shipment_id !== label.shipment_id) {
+          const reason = extraLabelNote(label);
+          console.warn(`EasyPost: order ${order.number} - ${reason}`);
+          await swell.put(`/orders/${orderId}`, req.appValues({ easypost_note: reason }));
+          return { bought: false, extra_label: true, reason };
+        }
         values.easypost_status = STATUS_SHIPPED_ELSEWHERE;
         values.easypost_note = itemsShippedNote(err.message);
       }
