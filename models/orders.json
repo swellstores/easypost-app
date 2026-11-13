@@ -7,10 +7,11 @@
       "type": "string",
       "enum": [
         "label_purchased",
+        "shipped_elsewhere",
         "voided",
         "error"
       ],
-      "description": "label_purchased once a label is bought; voided after the label is refunded"
+      "description": "label_purchased once a label is bought (shipped_elsewhere when the order's items were already shipped by another shipment); voided after the label is refunded"
     },
     "easypost_shipment_id": {
       "type": "string",
@@ -77,6 +78,10 @@
     },
     "easypost_error": {
       "type": "string"
+    },
+    "easypost_note": {
+      "type": "string",
+      "description": "Why a bought label has no Swell shipment"
     }
   }
 }

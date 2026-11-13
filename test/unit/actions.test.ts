@@ -132,6 +132,21 @@ describe("buy-label", () => {
     expect(await buyLabel(buyRequest(SETTINGS, makeOrder({ canceled: true })))).toEqual({ message: "No label bought: Order is canceled." });
   });
 
+  it("says the label was bought when only the Swell shipment is still pending", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
+    const req = buyRequest(SETTINGS, makeOrder());
+    const locked = Object.assign(new Error("POST /shipments"), {
+      name: "SwellError",
+      status: 400,
+      body: { order_id: { message: "Order shipments are being updated, please try again" } },
+    });
+    (req.swell as any).post = vi.fn().mockRejectedValue(locked);
+    const { message } = await buyLabel(req);
+    expect(message).toMatch(/^The label was bought, but Swell couldn't create the shipment for order 100123 yet/);
+    expect(message).toContain("Buy the label again to finish; the bought label is reused.");
+  });
+
   it("reports EasyPost outages", async () => {
     quiet();
     mockEasyPost({ "POST /shipments": jsonResponse({ error: { message: "down" } }, 503) });

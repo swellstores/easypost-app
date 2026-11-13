@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FINAL_TRACKING_STATUSES,
+  ItemsAlreadyShipped,
+  NOTHING_LEFT_REASON,
+  ShipmentPending,
   applyTracker,
   buyLabel,
   createSwellShipment,
@@ -8,6 +11,7 @@ import {
   getTrackingOrders,
   refreshTracking,
   trackerValues,
+  itemsShippedNote,
   voidLabel,
 } from "../../functions/lib/labels";
 import { createMockRequest } from "../helpers/mock-request";
@@ -30,6 +34,21 @@ function quiet() {
   vi.spyOn(console, "error").mockImplementation(() => {});
 }
 
+// a refused write, thrown like the Swell client does: SwellError with the errors in body
+function refused(errors: Record<string, any>) {
+  return Object.assign(new Error(`POST /shipments\n${JSON.stringify(errors)}`), { name: "SwellError", status: 400, body: errors });
+}
+const NOT_LEFT = "Cannot ship 2 of item item_1, only 0 left to deliver";
+
+// GET after a refusal: no shipment with the tracking code, and `left` of item_1 still to ship
+function afterRefusal(left: number, copy?: any) {
+  return vi.fn(async (path: string) =>
+    path === "/shipments"
+      ? { results: copy ? [copy] : [] }
+      : makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: left }] }),
+  );
+}
+
 // the values saved in the last swell.put to the order
 function savedValues(put: ReturnType<typeof vi.fn>) {
   const calls = put.mock.calls.filter(([url]) => url === `/orders/${ORDER_ID}`);
@@ -40,9 +59,10 @@ describe("createSwellShipment", () => {
   it("ships the deliverable items with carrier and tracking", async () => {
     quiet();
     const post = vi.fn().mockResolvedValue({ id: "sw_ship_1" });
+    const get = vi.fn().mockResolvedValueOnce({ results: [] }).mockResolvedValueOnce({ results: [{ id: "sw_ship_1" }] });
     const order = makeOrder({ items: [...makeOrder().items, { id: "item_2", delivery: "shipment", quantity_shipment_deliverable: 0 }] });
 
-    const id = await createSwellShipment({ post } as any, order, {
+    const id = await createSwellShipment({ post, get } as any, order, {
       shipment_id: "shp_1",
       tracking_code: "9400",
       carrier: "USPS",
@@ -61,15 +81,78 @@ describe("createSwellShipment", () => {
       service_name: "Ground Advantage",
       tracking_code: "9400",
       notes: "EasyPost label shp_1: https://track.easypost.com/trk_1",
+      $validate_items: true,
+    });
+    expect(get).toHaveBeenCalledWith("/shipments", {
+      where: { order_id: ORDER_ID, tracking_code: "9400", canceled: { $ne: true } },
+      limit: 25,
     });
   });
 
-  it("skips orders with nothing left to ship", async () => {
+  it("treats nothing left to ship like Swell refusing the items", async () => {
     quiet();
     const post = vi.fn();
     const order = makeOrder({ items: [{ id: "i", delivery: "shipment", quantity_shipment_deliverable: 0 }], shipping: undefined });
-    expect(await createSwellShipment({ post } as any, order, { shipment_id: "shp_1" })).toBeNull();
+    await expect(createSwellShipment({ post } as any, order, { shipment_id: "shp_1" })).rejects.toMatchObject({
+      constructor: ItemsAlreadyShipped,
+      message: "nothing left to ship",
+    });
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("reuses the shipment that already has the label's tracking code", async () => {
+    quiet();
+    const post = vi.fn();
+    const get = vi.fn().mockResolvedValue({ results: [{ id: "sw_0" }] });
+    expect(await createSwellShipment({ post, get } as any, makeOrder(), { shipment_id: "shp_1", tracking_code: "9400" })).toBe("sw_0");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("uses a parallel run's shipment when Swell refuses the items", async () => {
+    quiet();
+    const post = vi.fn().mockRejectedValue(refused({ items: { message: NOT_LEFT } }));
+    const get = afterRefusal(0, { id: "sw_a" });
+    get.mockResolvedValueOnce({ results: [] });
+    expect(await createSwellShipment({ post, get } as any, makeOrder(), { shipment_id: "shp_1", tracking_code: "9400" })).toBe("sw_a");
+  });
+
+  it("throws ItemsAlreadyShipped when another shipment shipped the items, fully or partly", async () => {
+    quiet();
+    for (const left of [0, 1]) {
+      const post = vi.fn().mockRejectedValue(refused({ items: { message: `Cannot ship 2 of item item_1, only ${left} left to deliver` } }));
+      await expect(
+        createSwellShipment({ post, get: afterRefusal(left) } as any, makeOrder(), { shipment_id: "shp_1", tracking_code: "9400" }),
+      ).rejects.toBeInstanceOf(ItemsAlreadyShipped);
+    }
+  });
+
+  it("reads the errors when Swell answered 4xx with the whole { errors } response", async () => {
+    quiet();
+    const error = Object.assign(new Error("POST /shipments"), { name: "SwellError", status: 422, body: { errors: { items: { message: NOT_LEFT } } } });
+    const post = vi.fn().mockRejectedValue(error);
+    await expect(
+      createSwellShipment({ post, get: afterRefusal(0) } as any, makeOrder(), { shipment_id: "shp_1", tracking_code: "9400" }),
+    ).rejects.toBeInstanceOf(ItemsAlreadyShipped);
+  });
+
+  it("throws ShipmentPending for a lock or items only reserved by a write in progress", async () => {
+    quiet();
+    const label = { shipment_id: "shp_1", tracking_code: "9400" };
+    const locked = vi.fn().mockRejectedValue(refused({ order_id: { message: "Order shipments are being updated, please try again" } }));
+    await expect(createSwellShipment({ post: locked, get: afterRefusal(2) } as any, makeOrder(), label)).rejects.toBeInstanceOf(ShipmentPending);
+    const reserved = vi.fn().mockRejectedValue(refused({ items: { message: NOT_LEFT } }));
+    await expect(createSwellShipment({ post: reserved, get: afterRefusal(2) } as any, makeOrder(), label)).rejects.toThrow(
+      "The label was bought, but Swell couldn't create the shipment for order 100123 yet",
+    );
+  });
+
+  it("rethrows other validation errors", async () => {
+    quiet();
+    const error = refused({ "items.product_id": { message: "Required" } });
+    const post = vi.fn().mockRejectedValue(error);
+    await expect(
+      createSwellShipment({ post, get: afterRefusal(2) } as any, makeOrder(), { shipment_id: "shp_1", tracking_code: "9400" }),
+    ).rejects.toBe(error);
   });
 
   it("writes notes without a tracking page", async () => {
@@ -142,6 +225,7 @@ describe("buyLabel", () => {
       easypost_tracking_status: "pre_transit",
       easypost_refund_status: null,
       easypost_error: null,
+      easypost_note: null,
       easypost_swell_shipment_id: "sw_ship_1",
     });
   });
@@ -179,15 +263,63 @@ describe("buyLabel", () => {
     });
   });
 
-  it("does not create a Swell shipment when nothing is left to ship", async () => {
+  it("doesn't buy a label when nothing is left to ship and fulfillment is on", async () => {
+    quiet();
+    const { fetchMock } = mockEasyPost({});
+    const order = makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 0 }] });
+    const swell = swellFor(order);
+
+    expect(await buyLabel(request(swell), ORDER_ID, SETTINGS)).toEqual({ bought: false, reason: NOTHING_LEFT_REASON });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(swell.put).not.toHaveBeenCalled();
+  });
+
+  it("buys a label for an order already shipped in Swell when fulfillment is off", async () => {
     quiet();
     mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
     const order = makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 0 }] });
     const swell = swellFor(order);
 
-    await buyLabel(request(swell), ORDER_ID, SETTINGS);
+    expect((await buyLabel(request(swell), ORDER_ID, { ...SETTINGS, create_fulfillment: false })).bought).toBe(true);
+    expect(swell.post).not.toHaveBeenCalled();
+  });
 
-    expect(savedValues(swell.put).easypost_swell_shipment_id).toBeUndefined();
+  it("keeps the bought label with the shipped-elsewhere status when Swell refuses the items", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
+    const swell = { ...swellFor(makeOrder()), post: vi.fn().mockRejectedValue(refused({ items: { message: NOT_LEFT } })) };
+    const get = swell.get;
+    swell.get = vi.fn(async (url: string, ...args: any[]) =>
+      url === "/shipments" ? { results: [] } : url === `/orders/${ORDER_ID}` && args.length === 0
+        ? makeOrder({ items: [{ ...makeOrder().items[0], quantity_shipment_deliverable: 0 }] })
+        : get(url, ...args),
+    ) as any;
+
+    expect((await buyLabel(request(swell), ORDER_ID, SETTINGS)).bought).toBe(true);
+    expect(savedValues(swell.put)).toMatchObject({
+      easypost_status: "shipped_elsewhere",
+      easypost_shipment_id: "shp_1",
+      easypost_note: itemsShippedNote(NOT_LEFT),
+    });
+    expect(savedValues(swell.put)).not.toHaveProperty("easypost_swell_shipment_id");
+  });
+
+  it("saves the error and rethrows when the shipment is still pending, so a retry reuses the label", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments": { id: "shp_1", rates: [makeRate()] }, "POST /shipments/shp_1/buy": makeBoughtShipment() });
+    const swell = { ...swellFor(makeOrder()), post: vi.fn().mockRejectedValue(refused({ order_id: { message: "Order shipments are being updated, please try again" } })) };
+
+    await expect(buyLabel(request(swell), ORDER_ID, SETTINGS)).rejects.toBeInstanceOf(ShipmentPending);
+    // the id saved before buying lets a retry reuse the label
+    expect(swell.put).toHaveBeenCalledWith(`/orders/${ORDER_ID}`, { $app: { easypost: { easypost_shipment_id: "shp_1" } } });
+    expect(savedValues(swell.put)).toMatchObject({ easypost_status: "error", easypost_error: expect.stringContaining("The label was bought") });
+  });
+
+  it("doesn't buy a second label for an order shipped elsewhere", async () => {
+    const { fetchMock } = mockEasyPost({});
+    const order = makeOrder({ $app: { easypost: { easypost_status: "shipped_elsewhere", easypost_tracking_code: "T1" } } });
+    expect(await buyLabel(request(swellFor(order)), ORDER_ID, SETTINGS)).toMatchObject({ bought: false, reason: "A label was already bought" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("skips orders that already have a label, are canceled or have nothing to ship", async () => {
@@ -279,6 +411,18 @@ describe("voidLabel", () => {
       easypost_tracking_date: null,
       easypost_eta: null,
       easypost_error: null,
+      easypost_note: null,
+    });
+  });
+
+  it("voids a label of an order shipped elsewhere", async () => {
+    quiet();
+    mockEasyPost({ "POST /shipments/shp_1/refund": { id: "shp_1", refund_status: "submitted" } });
+    const order = makeOrder({ $app: { easypost: { easypost_status: "shipped_elsewhere", easypost_shipment_id: "shp_1" } } });
+    const put = vi.fn().mockResolvedValue({});
+    expect(await voidLabel(request({ get: vi.fn().mockResolvedValue(order), put }), ORDER_ID, SETTINGS)).toMatchObject({
+      voided: true,
+      shipment_canceled: false,
     });
   });
 
@@ -400,7 +544,7 @@ describe("tracking", () => {
     expect(await getTrackingOrders(request({ get }), 5)).toEqual({ results: [{ id: "o1" }], count: 3 });
     expect(get).toHaveBeenCalledWith("/orders", {
       where: {
-        "$app.easypost.easypost_status": "label_purchased",
+        "$app.easypost.easypost_status": { $in: ["label_purchased", "shipped_elsewhere"] },
         "$app.easypost.easypost_tracker_id": { $ne: null },
         "$app.easypost.easypost_tracking_status": { $nin: FINAL_TRACKING_STATUSES },
         $or: [

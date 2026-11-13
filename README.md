@@ -8,7 +8,7 @@ Connects a Swell store to [EasyPost](https://www.easypost.com). Customers see li
 - **Labels:** the app creates an EasyPost shipment for the order and buys the rate for the service the customer chose at checkout (`POST /shipments/{id}/buy`). If that service isn't available, or the order was shipped with a non-EasyPost service, it buys the cheapest rate, or stops, depending on **Label service**. International labels include a customs declaration built from the order items. Labels are bought:
   - automatically when an order is paid or submitted (**Buy labels** setting), or
   - with **Buy EasyPost label** on the order page (the default, so nothing is charged until you choose).
-- **Fulfillment:** after buying, the app creates a Swell shipment for everything still to ship, with the carrier, service and tracking number.
+- **Fulfillment:** after buying, the app creates a Swell shipment for everything still to ship, with the carrier, service and tracking number. With fulfillment on, no label is bought for an order with nothing left to ship ("Nothing left to ship: the order's items were already shipped by another shipment, or refunded or canceled").
 - **Void label:** **Void EasyPost label** on the order page asks the carrier to refund the label (`POST /shipments/{id}/refund`), cancels its Swell shipment if the app created one, and lets you buy a new label.
 - **Tracking:** every hour the app refreshes the EasyPost tracker of each label that hasn't been delivered yet, and saves the status, latest scan and estimated delivery on the order. **Refresh tracking now** in the app settings runs it right away. With the optional webhook, updates arrive as they happen.
 - **Order tab:** an **EasyPost** tab on the order page shows the status, EasyPost shipment ID, carrier, service, tracking number, tracking status and details, estimated delivery, tracking page, label link, postage, refund status and the last error. The orders list gets an **EasyPost** status column.
@@ -50,7 +50,7 @@ All credentials and options are app settings (`settings/easypost.json`). Nothing
 | Webhook secret | no (recommended) | | Any long random string. When set, enter the same value as the webhook secret in EasyPost: events must carry a valid signature, and unsigned ones are rejected. When empty, events are accepted unsigned. Stored as a secret. |
 | Webhook URL | read-only | `https://{store-id}:{public-key}@{store-id}.swell.store/functions/easypost/easypost-webhook` | The URL pattern to add in EasyPost, with the placeholders replaced. |
 
-**Actions:** **Test connection** and **Refresh tracking now** are in the Actions menu on the app's settings page. **Buy EasyPost label** and **Void EasyPost label** are on each order's page; Void shows only while the order has a label. While **Enabled** is off, Buy, Void and Refresh tracking now do nothing and say so; Test connection still works.
+**Actions:** **Test connection** and **Refresh tracking now** are in the Actions menu on the app's settings page. **Buy EasyPost label** and **Void EasyPost label** are on each order's page; Void shows only while the order has a label (**Label purchased** or **Label bought, shipped elsewhere**). While **Enabled** is off, Buy, Void and Refresh tracking now do nothing and say so; Test connection still works.
 
 ## Setup
 
@@ -122,7 +122,7 @@ To rotate the secret, change **Webhook secret** in the app settings and in the E
 | `functions/lib/easypost.ts` | Shared | EasyPost API client, addresses, unit conversion, parcels, customs, rate mapping, label rate choice. |
 | `functions/lib/labels.ts` | Shared | Buying and voiding labels, Swell shipment creation, tracking. |
 
-Data stored on each order under `$app.easypost` (`models/orders.json`): `easypost_status` (`label_purchased`, `voided` or `error`), `easypost_shipment_id`, `easypost_tracker_id`, `easypost_tracking_code`, `easypost_tracking_url`, `easypost_label_url`, `easypost_carrier`, `easypost_service`, `easypost_label_cost`, `easypost_label_currency`, `easypost_label_date`, `easypost_refund_status`, `easypost_swell_shipment_id`, `easypost_tracking_status`, `easypost_tracking_details`, `easypost_tracking_date`, `easypost_eta`, `easypost_checked_at`, `easypost_error`.
+Data stored on each order under `$app.easypost` (`models/orders.json`): `easypost_status` (`label_purchased`, `shipped_elsewhere`, `voided` or `error`), `easypost_shipment_id`, `easypost_tracker_id`, `easypost_tracking_code`, `easypost_tracking_url`, `easypost_label_url`, `easypost_carrier`, `easypost_service`, `easypost_label_cost`, `easypost_label_currency`, `easypost_label_date`, `easypost_refund_status`, `easypost_swell_shipment_id`, `easypost_tracking_status`, `easypost_tracking_details`, `easypost_tracking_date`, `easypost_eta`, `easypost_checked_at`, `easypost_error`, `easypost_note`.
 
 Data stored on each product under `$app.easypost` (`models/products.json`): `easypost_hs_code` and `easypost_origin_country`, used for customs.
 
@@ -134,7 +134,12 @@ Data stored on each product under `$app.easypost` (`models/products.json`): `eas
 
 **Customs:** one customs item per order item, with the product name, quantity, line total in the order currency, weight in ounces and SKU. The HS code and country of origin come from the **HS code** and **Country of origin** fields the app adds to each product's EasyPost tab (`$app.easypost.easypost_hs_code` and `easypost_origin_country`). Without an HS code none is sent, and the origin defaults to the ship-from country. Contents type is `merchandise`, EEL/PFC is `NOEEI 30.37(a)` and undeliverable parcels are returned.
 
-**Swell shipments:** `carrier` is the EasyPost carrier in lowercase (`USPS` → `usps`), `service` is the readable service name (`GroundAdvantage` → `Ground Advantage`), and `notes` has the EasyPost shipment ID and tracking page.
+**Swell shipments:** `carrier` is the EasyPost carrier in lowercase (`USPS` → `usps`), `service` is the readable service name (`GroundAdvantage` → `Ground Advantage`), and `notes` has the EasyPost shipment ID and tracking page. The app only makes full shipments (everything the order has left to ship) and creates them with `$validate_items: true`, so Swell refuses items that were already shipped instead of shipping them twice:
+
+- A shipment with the label's tracking number is reused (a retry, or a parallel run).
+- If Swell refuses the items ("Cannot ship 2 of item …, only 1 left to deliver") and the order's saved shipments really leave fewer than requested, the items were shipped by another shipment (another app, or by hand), or refunded or canceled. The bought label is kept with the status **Label bought, shipped elsewhere** and the note "Label bought, but no Swell shipment was created: … (<Swell's reason>). Void the label if it isn't needed." Such an order can be voided and is tracked, and no second label is bought for it.
+- If the order's shipments are locked by another write, or the items are only reserved by a shipment write still in progress (Swell holds reservations for up to 3 minutes), the order gets the **Error** status with "The label was bought, but Swell couldn't create the shipment for order … yet (…). Buy the label again to finish; the bought label is reused." Automatic buys are retried by the platform; **Buy EasyPost label** finishes it by hand without buying again.
+- Other validation errors are saved as errors.
 
 **Tracking:** each pass refreshes up to 20 labels with `GET /trackers/{id}`, least recently checked first, stopping after about 6 seconds. Labels delivered, returned, failed or canceled, and labels bought more than 60 days ago, are no longer refreshed. Updates older than the last saved one are skipped, and a tracker whose shipment isn't the order's label is ignored.
 

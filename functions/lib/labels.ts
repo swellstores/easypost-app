@@ -20,8 +20,15 @@ import {
 } from './easypost';
 
 export const STATUS_LABEL_PURCHASED = 'label_purchased';
+// a label was bought, but the order's items were already shipped by another shipment
+export const STATUS_SHIPPED_ELSEWHERE = 'shipped_elsewhere';
 export const STATUS_VOIDED = 'voided';
 export const STATUS_ERROR = 'error';
+// statuses with a bought label: voidable, tracked, no second label
+export const LABEL_STATUSES = [STATUS_LABEL_PURCHASED, STATUS_SHIPPED_ELSEWHERE];
+
+export const NOTHING_LEFT_REASON =
+  "Nothing left to ship: the order's items were already shipped by another shipment, or refunded or canceled";
 
 // tracker statuses after which a parcel is no longer refreshed
 export const FINAL_TRACKING_STATUSES = ['delivered', 'return_to_sender', 'failure', 'cancelled', 'error'];
@@ -48,9 +55,9 @@ export interface LabelDetails {
   tracking_url?: string;
 }
 
-// Swell shipment for everything still to be shipped on the order
-export async function createSwellShipment(swell: SwellAPI, order: any, label: LabelDetails): Promise<string | null> {
-  const items = (order.items || [])
+// the order's items left to ship
+function deliverableItems(order: any) {
+  return (order.items || [])
     .filter((item: any) => item.delivery === 'shipment' && item.quantity_shipment_deliverable > 0)
     .map((item: any) => ({
       order_item_id: item.id,
@@ -58,39 +65,135 @@ export async function createSwellShipment(swell: SwellAPI, order: any, label: La
       variant_id: item.variant_id,
       quantity: item.quantity_shipment_deliverable,
     }));
+}
 
+// Active Swell shipments of the order with this tracking code, oldest first
+async function findShipmentsByTracking(swell: SwellAPI, orderId: string, trackingCode?: string): Promise<any[]> {
+  if (!trackingCode) return [];
+  const result: any = await swell.get('/shipments', {
+    where: { order_id: orderId, tracking_code: trackingCode, canceled: { $ne: true } },
+    limit: 25,
+  });
+  return (result?.results || []).sort(
+    (a: any, b: any) => String(a.date_created).localeCompare(String(b.date_created)) || String(a.id).localeCompare(String(b.id)),
+  );
+}
+
+// the order's items were shipped elsewhere, refunded or canceled; the message is the reason
+export class ItemsAlreadyShipped extends Error {}
+
+// shipments locked or items reserved by another write; buying again reuses the label and retries the shipment
+export class ShipmentPending extends Error {}
+
+export function itemsShippedNote(reason: string): string {
+  return `Label bought, but no Swell shipment was created: the order's items were already shipped by another shipment, or refunded or canceled (${reason}). Void the label if it isn't needed.`;
+}
+
+// errors of a write Swell refused, from the SwellError's body
+function validationErrors(err: any): Record<string, any> | undefined {
+  if (!(err?.status >= 400 && err.status < 500)) return undefined;
+  const errors = err.body?.errors ?? err.body;
+  return errors && typeof errors === 'object' ? errors : undefined;
+}
+
+// Swell's "Cannot ship …" reason when $validate_items refused the items
+function itemsRefusal(errors: Record<string, any>): string | undefined {
+  const message = errors.items?.message;
+  return typeof message === 'string' && /^Cannot ship /.test(message) ? message : undefined;
+}
+
+// Swell's { field: { message } } errors as one line
+function errorText(errors: Record<string, any>): string {
+  return Object.entries(errors)
+    .map(([field, error]) => `${field}: ${error?.message || error}`)
+    .join('; ');
+}
+
+// whether the order's saved shipments (not reservations) still leave every requested item to ship
+async function stillDeliverable(swell: SwellAPI, orderId: string, requested: { order_item_id: string; quantity: number }[]) {
+  const order: any = await swell.get(`/orders/${orderId}`);
+  const left = new Map<string, number>((order?.items || []).map((item: any) => [String(item.id), Number(item.quantity_shipment_deliverable) || 0]));
+  return requested.every((item) => (left.get(String(item.order_item_id)) || 0) >= item.quantity);
+}
+
+const pending = (order: any, reason: string) =>
+  new ShipmentPending(
+    `The label was bought, but Swell couldn't create the shipment for order ${order.number} yet (${reason}). Buy the label again to finish; the bought label is reused.`,
+  );
+
+// Swell shipment for everything left to ship; reuses one with the label's tracking code
+export async function createSwellShipment(swell: SwellAPI, order: any, label: LabelDetails): Promise<string> {
+  const [existing] = await findShipmentsByTracking(swell, order.id, label.tracking_code);
+  if (existing) {
+    console.log(`EasyPost: order ${order.number} already has shipment ${existing.id} for ${label.tracking_code}`);
+    return existing.id;
+  }
+
+  const items = deliverableItems(order);
+  // same as Swell refusing the items below
   if (!items.length) {
     console.log(`EasyPost: order ${order.number} has nothing left to ship`);
-    return null;
+    throw new ItemsAlreadyShipped('nothing left to ship');
   }
 
   const shipping = order.shipping || {};
   const serviceLabel = humanizeService(label.service) || undefined;
-  const shipment = await swell.post('/shipments', {
-    order_id: order.id,
-    items,
-    destination: {
-      name: shipping.name,
-      first_name: shipping.first_name,
-      last_name: shipping.last_name,
-      address1: shipping.address1,
-      address2: shipping.address2,
-      city: shipping.city,
-      state: shipping.state,
-      zip: shipping.zip,
-      country: shipping.country,
-      phone: shipping.phone,
-    },
-    carrier: carrierId(label.carrier),
-    carrier_name: label.carrier,
-    // the dashboard shows `service` in the shipment dialog, so use the readable name
-    service: serviceLabel,
-    service_name: serviceLabel,
-    tracking_code: label.tracking_code,
-    notes: `EasyPost label ${label.shipment_id}${label.tracking_url ? `: ${label.tracking_url}` : ''}`,
-  });
+  let shipment: any;
+  try {
+    shipment = await swell.post('/shipments', {
+      order_id: order.id,
+      items,
+      destination: {
+        name: shipping.name,
+        first_name: shipping.first_name,
+        last_name: shipping.last_name,
+        address1: shipping.address1,
+        address2: shipping.address2,
+        city: shipping.city,
+        state: shipping.state,
+        zip: shipping.zip,
+        country: shipping.country,
+        phone: shipping.phone,
+      },
+      carrier: carrierId(label.carrier),
+      carrier_name: label.carrier,
+      // the dashboard shows `service` in the shipment dialog, so use the readable name
+      service: serviceLabel,
+      service_name: serviceLabel,
+      tracking_code: label.tracking_code,
+      notes: `EasyPost label ${label.shipment_id}${label.tracking_url ? `: ${label.tracking_url}` : ''}`,
+      // Swell refuses items the order has no longer left to ship, so they can't be shipped twice
+      $validate_items: true,
+    });
+  } catch (err) {
+    // a refused write throws a SwellError with the errors in `body`
+    const errors = validationErrors(err);
+    // shipments locked by another write
+    if (errors?.order_id) throw pending(order, errorText(errors));
+    const refused = errors && itemsRefusal(errors);
+    if (!refused) throw err;
+    // a parallel run for this label shipped the items: use its shipment
+    const [copy] = await findShipmentsByTracking(swell, order.id, label.tracking_code);
+    if (copy) {
+      console.log(`EasyPost: order ${order.number} was shipped meanwhile; keeps shipment ${copy.id}`);
+      return copy.id;
+    }
+    // saved shipments still leave every item: Swell counted a reservation of a write in progress
+    if (await stillDeliverable(swell, order.id, items)) throw pending(order, refused);
+    // shipped elsewhere or refunded: the label is kept without a shipment
+    console.warn(`EasyPost: Swell refused the shipment for order ${order.number}: ${refused}`);
+    throw new ItemsAlreadyShipped(refused);
+  }
 
   console.log(`EasyPost: created shipment ${shipment.id} for order ${order.number}`);
+
+  const copies = await findShipmentsByTracking(swell, order.id, label.tracking_code);
+  const oldest = copies[0];
+  if (oldest && oldest.id !== shipment.id) {
+    await swell.put(`/shipments/${shipment.id}`, { canceled: true });
+    console.log(`EasyPost: canceled duplicate shipment ${shipment.id}; order ${order.number} keeps ${oldest.id}`);
+    return oldest.id;
+  }
   return shipment.id;
 }
 
@@ -125,7 +228,7 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
 
   const appData = getAppData(order, appId);
 
-  if (appData.easypost_status === STATUS_LABEL_PURCHASED) {
+  if (LABEL_STATUSES.includes(appData.easypost_status)) {
     return { bought: false, tracking_code: appData.easypost_tracking_code, reason: 'A label was already bought' };
   }
 
@@ -150,6 +253,12 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
     // a previous run may have bought the label but timed out before saving it
     let bought = await findBoughtShipment(settings, appData);
     let selected: any = bought?.selected_rate;
+
+    // With fulfillment on, don't buy a label for an order with nothing left to ship (with it off, the merchant may
+    // have shipped it in Swell first)
+    if (!bought && settings.create_fulfillment !== false && !deliverableItems(order).length) {
+      return { bought: false, reason: NOTHING_LEFT_REASON };
+    }
 
     if (!bought) {
       const weightUnit = await getWeightUnit(swell);
@@ -202,12 +311,16 @@ export async function buyLabel(req: SwellRequest, orderId: string, settings: Eas
       easypost_tracking_status: bought.tracker?.status || null,
       easypost_refund_status: null,
       easypost_error: null,
+      easypost_note: null,
     };
 
     if (settings.create_fulfillment !== false) {
-      const swellShipmentId = await createSwellShipment(swell, order, label);
-      if (swellShipmentId) {
-        values.easypost_swell_shipment_id = swellShipmentId;
+      try {
+        values.easypost_swell_shipment_id = await createSwellShipment(swell, order, label);
+      } catch (err) {
+        if (!(err instanceof ItemsAlreadyShipped)) throw err;
+        values.easypost_status = STATUS_SHIPPED_ELSEWHERE;
+        values.easypost_note = itemsShippedNote(err.message);
       }
     }
 
@@ -245,7 +358,7 @@ export async function voidLabel(req: SwellRequest, orderId: string, settings: Ea
   }
 
   const appData = getAppData(order, appId);
-  if (appData.easypost_status !== STATUS_LABEL_PURCHASED || !appData.easypost_shipment_id) {
+  if (!LABEL_STATUSES.includes(appData.easypost_status) || !appData.easypost_shipment_id) {
     return { voided: false, reason: 'The order has no EasyPost label to void' };
   }
 
@@ -279,6 +392,7 @@ export async function voidLabel(req: SwellRequest, orderId: string, settings: Ea
       easypost_tracking_date: null,
       easypost_eta: null,
       easypost_error: null,
+      easypost_note: null,
     }),
   );
 
@@ -353,7 +467,7 @@ export async function getTrackingOrders(req: SwellRequest, limit: number): Promi
 
   const result = await req.swell.get('/orders', {
     where: {
-      [`${prefix}.easypost_status`]: STATUS_LABEL_PURCHASED,
+      [`${prefix}.easypost_status`]: { $in: LABEL_STATUSES },
       [`${prefix}.easypost_tracker_id`]: { $ne: null },
       [`${prefix}.easypost_tracking_status`]: { $nin: FINAL_TRACKING_STATUSES },
       // labels bought before easypost_label_date was saved fall back to the order date

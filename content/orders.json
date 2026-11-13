@@ -14,6 +14,10 @@
           "label": "Label purchased"
         },
         {
+          "value": "shipped_elsewhere",
+          "label": "Label bought, shipped elsewhere"
+        },
+        {
           "value": "voided",
           "label": "Label voided"
         },
@@ -156,6 +160,12 @@
       "label": "Error",
       "type": "long_text",
       "readonly": true
+    },
+    {
+      "id": "easypost_note",
+      "label": "Note",
+      "type": "long_text",
+      "readonly": true
     }
   ],
   "views": [
@@ -179,7 +189,7 @@
           "hint": "Buys a label from your EasyPost account for the service set in Label service",
           "conditions": {
             "easypost_status": {
-              "$ne": "label_purchased"
+              "$nin": ["label_purchased", "shipped_elsewhere"]
             }
           }
         },
@@ -190,7 +200,9 @@
           "loading_label": "Voiding…",
           "hint": "Asks the carrier to refund the label and cancels the Swell shipment the app created",
           "conditions": {
-            "easypost_status": "label_purchased"
+            "easypost_status": {
+              "$in": ["label_purchased", "shipped_elsewhere"]
+            }
           }
         }
       ],
@@ -274,7 +286,17 @@
               "id": "easypost_refund_status",
               "conditions": {
                 "easypost_refund_status": {
-                  "$exists": true
+                  "$exists": true,
+                  "$ne": null
+                }
+              }
+            },
+            {
+              "id": "easypost_note",
+              "conditions": {
+                "easypost_note": {
+                  "$exists": true,
+                  "$ne": null
                 }
               }
             },
@@ -282,7 +304,8 @@
               "id": "easypost_error",
               "conditions": {
                 "easypost_error": {
-                  "$exists": true
+                  "$exists": true,
+                  "$ne": null
                 }
               }
             }

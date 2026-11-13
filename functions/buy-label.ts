@@ -1,5 +1,5 @@
 import { getEasyPostSettings, hasKey, humanizeService } from './lib/easypost';
-import { buyLabel } from './lib/labels';
+import { ShipmentPending, buyLabel } from './lib/labels';
 
 export const config: SwellConfig = {
   description: 'Buy an EasyPost label for this order',
@@ -31,6 +31,8 @@ export default async function (req: SwellRequest) {
     }
     return { message: `No label bought: ${result.reason}.` };
   } catch (err: any) {
+    // the label was bought; only the Swell shipment is pending
+    if (err instanceof ShipmentPending) return { message: err.message };
     return { message: `No label bought: ${err?.message || err}` };
   }
 }
