@@ -162,7 +162,7 @@ Data stored on each product under `$app.easypost` (`models/products.json`): `eas
 
 ## Development
 
-Source: [swellstores/easypost_app](https://github.com/swellstores/easypost_app) (MIT, see `LICENSE`). Needs the [Swell CLI](https://developers.swell.is/cli) (`swell login`) and Node 20+.
+Source: [swellstores/easypost_app](https://github.com/swellstores/easypost_app) (Swell App License, see `LICENSE`). Needs the [Swell CLI](https://developers.swell.is/cli) (`swell login`) and Node 20+.
 
 ```bash
 git clone https://github.com/swellstores/easypost_app && cd easypost_app
