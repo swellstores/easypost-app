@@ -5,6 +5,8 @@ export const config: SwellConfig = {
   description: 'Refresh tracking for EasyPost labels in transit',
   cron: {
     schedule: '0 */3 * * *',
+    // Skipped while the app is off or has no API key
+    conditions: { $settings: { easypost: { enabled: { $ne: false }, api_key: { $empty: false } } } },
   },
 };
 
