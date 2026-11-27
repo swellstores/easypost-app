@@ -2,6 +2,7 @@
 	"id": "easypost",
 	"name": "EasyPost",
 	"description": "Live EasyPost rates at checkout, labels and tracking for Swell orders",
+	"repository_url": "https://github.com/swellstores/easypost-app",
 	"type": "integration",
 	"version": "1.0.8",
 	"support_email": "support@swell.is",

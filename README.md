@@ -162,7 +162,7 @@ Data stored on each product under `$app.easypost` (`models/products.json`): `eas
 
 ## Development
 
-Source: [swellstores/easypost_app](https://github.com/swellstores/easypost_app) (Swell App License, see `LICENSE`). Needs the [Swell CLI](https://developers.swell.is/cli) (`swell login`) and Node 20+.
+Source: [swellstores/easypost_app](https://github.com/swellstores/easypost_app) (MIT, see `LICENSE`). Needs the [Swell CLI](https://developers.swell.is/cli) (`swell login`) and Node 20+.
 
 ```bash
 git clone https://github.com/swellstores/easypost_app && cd easypost_app
@@ -186,3 +186,7 @@ swell logs --type function -s EasyPost
 - **Webhook signature:** the signature is checked against `req.rawBody`. Swell keeps the exact text only for calls through the storefront gateway (the `{store-id}.swell.store` webhook URL). `swell api post '/functions/easypost/easypost-webhook'` re-serializes the body, so signed test calls must go to the webhook URL itself.
 
 Listing assets: `assets/icon.png` is the EasyPost hexagon mark (512×512, EasyPost blue `#164DFF` on white), rendered from the official vector icon on docs.easypost.com. `images` in `swell.json` points at four 3200×1800 App Store images in `assets/screenshots/`: `1-settings.png` (API key and ship-from address), `2-shipping.png` (turning on EasyPost in Settings → Shipping), `3-orders.png` (the EasyPost status column in the order list) and `4-order.png` (the EasyPost tab of a delivered order).
+
+## License
+
+MIT. See [LICENSE](LICENSE). Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
