@@ -4,7 +4,7 @@ import { refreshTracking } from './lib/labels';
 export const config: SwellConfig = {
   description: 'Refresh tracking for EasyPost labels in transit',
   cron: {
-    schedule: '0 * * * *',
+    schedule: '0 */3 * * *',
   },
 };
 

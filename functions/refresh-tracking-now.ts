@@ -30,7 +30,7 @@ export default async function (req: SwellRequest) {
 
   const parts = [`Checked ${checked} ${checked === 1 ? 'label' : 'labels'}, ${updated} updated`];
   if (errors) parts.push(`${errors} with errors (see the function logs)`);
-  const message = `${parts.join(', ')}.${remaining ? ' More labels are waiting; run it again or wait for the next hourly refresh.' : ''}`;
+  const message = `${parts.join(', ')}.${remaining ? ' More labels are waiting; run it again or wait for the next scheduled refresh, every 3 hours.' : ''}`;
   // any failed label makes the result an error
   if (errors) fail(message);
   return { message };

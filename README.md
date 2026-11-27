@@ -10,7 +10,7 @@ Connects a Swell store to [EasyPost](https://www.easypost.com). Customers see li
   - with **Buy EasyPost label** on the order page (the default, so nothing is charged until you choose).
 - **Fulfillment:** after buying, the app creates a Swell shipment for everything still to ship, with the carrier, service and tracking number. With fulfillment on, no label is bought for an order with nothing left to ship ("Nothing left to ship: the order's items were already shipped by another shipment, or refunded or canceled"). When no label is bought because the order is canceled, has no items to ship or has nothing left to ship, the order's EasyPost tab gets the note "No label bought: …", so a skipped automatic buy is visible too; the next label bought clears it.
 - **Void label:** **Void EasyPost label** on the order page asks the carrier to refund the label (`POST /shipments/{id}/refund`), cancels its Swell shipment if the app created one, and lets you buy a new label.
-- **Tracking:** every hour the app refreshes the EasyPost tracker of each label that hasn't been delivered yet, and saves the status, latest scan and estimated delivery on the order. **Refresh tracking now** in the app settings runs it right away. With the optional webhook, updates arrive as they happen.
+- **Tracking:** every 3 hours the app refreshes the EasyPost tracker of each label that hasn't been delivered yet, and saves the status, latest scan and estimated delivery on the order. **Refresh tracking now** in the app settings runs it right away. With the optional webhook, updates arrive as they happen.
 - **Order tab:** an **EasyPost** tab on the order page shows the status, EasyPost shipment ID, carrier, service, tracking number, tracking status and details, estimated delivery, tracking page, label link, postage, refund status, a note (for example when the label's items were already shipped by another shipment) and the last error. The orders list gets an **EasyPost** status column.
 - **Test connection:** the action in the app settings checks the API key, lists your carrier accounts (production keys only) and flags a missing ship-from address or webhook secret.
 
@@ -64,7 +64,7 @@ All credentials and options are app settings (`settings/easypost.json`). Nothing
 
 ## Webhook setup
 
-The webhook is optional. Without it, the app refreshes tracking every hour. With it, EasyPost sends tracker updates as the carrier scans the parcel.
+The webhook is optional. Without it, the app refreshes tracking every 3 hours. With it, EasyPost sends tracker updates as the carrier scans the parcel.
 
 **What it handles**
 
@@ -105,7 +105,7 @@ Other events are acknowledged and ignored. Labels and voids don't need the webho
 | `404` `Function app.easypost.easypost-webhook not found` | The public key is missing from the URL, belongs to another store, or the app isn't installed in that environment. |
 | `200` but nothing changes | **Enabled** is off, the webhook and the API key are in different modes (test vs production), or no order has that tracker. |
 
-To rotate the secret, change **Webhook secret** in the app settings and in the EasyPost webhook at the same time. Events signed with the old secret are rejected in between, and the hourly refresh catches up.
+To rotate the secret, change **Webhook secret** in the app settings and in the EasyPost webhook at the same time. Events signed with the old secret are rejected in between, and the scheduled refresh catches up.
 
 ## How it works
 
@@ -113,7 +113,7 @@ To rotate the secret, change **Webhook secret** in the app settings and in the E
 |---|---|---|
 | `functions/shipping-rates.ts` | `after:order.shipping`, extension `easypost` | Gets EasyPost rates and adds them to `shipment_rating.services`. |
 | `functions/easypost-order-events.ts` | `order.submitted`, `order.paid` | Buys the label on the event chosen in **Buy labels**. |
-| `functions/refresh-tracking.ts` | Cron, every hour | Refreshes trackers of labels not delivered yet. |
+| `functions/refresh-tracking.ts` | Cron, every 3 hours | Refreshes trackers of labels not delivered yet. |
 | `functions/easypost-webhook.ts` | Public route, `POST` | Receives EasyPost tracker events. |
 | `functions/test-connection.ts` | Settings action | Checks the key and lists carrier accounts. |
 | `functions/refresh-tracking-now.ts` | Settings action | Runs the tracking refresh now. |
@@ -156,8 +156,8 @@ Data stored on each product under `$app.easypost` (`models/products.json`): `eas
 - **Customs:** rate requests don't include customs, so a few international rates may be missing at checkout. Labels include a basic declaration; carriers that need more (for example commercial invoices or tax IDs) fail with EasyPost's error on the order.
 - **Voiding:** carriers refund only unused labels within their own time limits. A rejected refund leaves the label and shipment in place. The refund status is saved when you void; later changes aren't followed.
 - **Carrier accounts:** EasyPost lists carrier accounts only for production keys, so **Test connection** skips them with a test key.
-- **Tracking:** without the webhook, tracking can be up to an hour old.
-- **Webhook URL credentials:** the Swell public key goes in the URL (`https://{store-id}:{public-key}@…`), the way Swell routes public functions to the right environment. If EasyPost refuses URLs with credentials, use the hourly refresh.
+- **Tracking:** without the webhook, tracking can be up to 3 hours old.
+- **Webhook URL credentials:** the Swell public key goes in the URL (`https://{store-id}:{public-key}@…`), the way Swell routes public functions to the right environment. If EasyPost refuses URLs with credentials, use the scheduled refresh.
 - **Retries:** before buying again, the app checks whether an earlier run already bought the label; only a missing EasyPost shipment (404) counts as not bought, and any other EasyPost error stops the buy, so a bought label is never bought a second time. Errors are saved to the order's `easypost_error`. EasyPost 5xx, network and Swell errors are rethrown, so automatic buys are retried by the platform; 4xx errors (bad address, no rates, insufficient funds) are not. Model-event functions that keep failing are turned off by the platform after about 4 days.
 
 ## Development

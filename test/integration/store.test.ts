@@ -17,7 +17,7 @@ describe("store data the app depends on", () => {
     expect(settings).toBeTypeOf("object");
   });
 
-  it("runs the tracking query the hourly refresh uses", async () => {
+  it("runs the tracking query the scheduled refresh uses", async () => {
     const req = createMockRequest({ appId: "easypost", useRealSwell: true });
     const { results, count } = await getTrackingOrders(req, 1);
 

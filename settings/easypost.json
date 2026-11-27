@@ -358,7 +358,7 @@
     {
       "type": "field_group",
       "label": "Webhook",
-      "description": "Optional. Gives you tracking updates as they happen instead of every hour.",
+      "description": "Optional. Gives you tracking updates as they happen instead of every 3 hours.",
       "fields": [
         {
           "id": "webhook_secret",

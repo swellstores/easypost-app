@@ -19,8 +19,8 @@ function request(settings: Record<string, any>, orders: any[] = []) {
 }
 
 describe("refresh-tracking", () => {
-  it("runs every hour", () => {
-    expect(config.cron?.schedule).toBe("0 * * * *");
+  it("runs every 3 hours", () => {
+    expect(config.cron?.schedule).toBe("0 */3 * * *");
   });
 
   it("refreshes labels in transit and logs the summary", async () => {

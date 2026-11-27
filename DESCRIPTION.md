@@ -6,7 +6,7 @@ Connect EasyPost with an API key, add the address your parcels ship from, and tu
 - **Labels when you want them.** Buy a label from the order page, or have the app buy it automatically when an order is paid or submitted. It buys the service the customer chose, or the cheapest rate, as you set in the app.
 - **Fulfilled with the label.** Each label creates a Swell shipment with the carrier, service and tracking number, and the order's EasyPost tab links to the label in PDF, PNG or ZPL.
 - **Customs for international orders.** Labels to other countries include a customs declaration built from the order's items.
-- **Tracking on every order.** Every hour, or as it happens with the optional EasyPost webhook, the app saves each parcel's tracking status, latest scan and estimated delivery on the order. The order list shows each order's EasyPost status.
+- **Tracking on every order.** Every 3 hours, or as it happens with the optional EasyPost webhook, the app saves each parcel's tracking status, latest scan and estimated delivery on the order. The order list shows each order's EasyPost status.
 - **Void a label you don't need.** Void EasyPost label asks the carrier to refund the label and cancels the Swell shipment the app created, so you can buy a new one.
 
 Setup takes a few minutes. In EasyPost, copy an API key from Account Settings → API Keys. In Swell, enter it in the app settings with your ship-from address and default parcel size, choose when to buy labels, run Test connection, then turn on EasyPost in Settings → Shipping and save.

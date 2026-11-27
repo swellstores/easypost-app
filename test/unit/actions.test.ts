@@ -253,7 +253,7 @@ describe("refresh-tracking-now", () => {
     // a label with an error makes the result an error popup, which still counts the rest
     await expectFailure(
       refreshNow(req),
-      "Checked 2 labels, 1 updated, 1 with errors (see the function logs). More labels are waiting; run it again or wait for the next hourly refresh.",
+      "Checked 2 labels, 1 updated, 1 with errors (see the function logs). More labels are waiting; run it again or wait for the next scheduled refresh, every 3 hours.",
     );
   });
 
